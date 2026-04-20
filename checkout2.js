@@ -136,6 +136,7 @@ function readCartTotal(){
   return _lastTildaTotal||0;
 }
 
+/* ПУНКТ 4: обновлённая функция updTotals — моментальное обновление */
 function updTotals(){
   var base=readCartTotal();
   if(!base)return;
@@ -164,7 +165,7 @@ function updTotals(){
   }
 }
 
-/* Наблюдатель за изменением суммы Tilda (кол-во товаров +/-) */
+/* ПУНКТ 4: наблюдатель за изменением суммы Tilda (кол-во товаров +/-) */
 function watchTildaTotal(){
   var target=document.querySelector('.t706__cartwin-totalamount');
   if(!target)target=document.querySelector('.t706__cartpage-totals-price');
@@ -179,22 +180,34 @@ function watchTildaTotal(){
   tOb.observe(target,{childList:true,characterData:true,subtree:true});
 }
 
-/* Также ловим клики на +/- кнопках */
+/* ПУНКТ 4: усиленное отслеживание кликов на +/- и удаление товара */
 function watchQuantityBtns(){
   document.addEventListener('click',function(e){
-    var btn=e.target.closest('.t706__product-quantity__btn,.t706__cartwin-product-del,[class*="quantity"]');
+    var btn=e.target.closest('.t706__product-quantity__btn,.t706__cartwin-product-del,[class*="quantity"],[class*="product-del"],[class*="cart-del"]');
     if(!btn)return;
-    setTimeout(function(){
-      var raw=getTildaRawTotal();
-      if(raw>0){_lastTildaTotal=raw;}
-      updTotals();
-    },300);
-    setTimeout(function(){
-      var raw=getTildaRawTotal();
-      if(raw>0){_lastTildaTotal=raw;}
-      updTotals();
-    },800);
+    /* Серия проверок с разной задержкой для надёжного отлова */
+    var delays=[100,200,350,500,700,1000,1500];
+    delays.forEach(function(d){
+      setTimeout(function(){
+        var raw=getTildaRawTotal();
+        if(raw>0&&raw!==_lastTildaTotal){
+          _lastTildaTotal=raw;
+        }
+        updTotals();
+      },d);
+    });
   });
+}
+
+/* ПУНКТ 4: polling — каждые 500мс проверяем не изменилась ли сумма */
+function startTotalPolling(){
+  setInterval(function(){
+    var raw=getTildaRawTotal();
+    if(raw>0&&raw!==_lastTildaTotal){
+      _lastTildaTotal=raw;
+      updTotals();
+    }
+  },500);
 }
 
 function setPromo(code){
@@ -232,6 +245,7 @@ function applyPromo(){
   if(code){setPromo(code);}
 }
 
+/* ПУНКТ 3: красная обводка при неверном промо + ПУНКТ 4: моментальное обновление */
 function initPromoField(){
   var btn=document.getElementById('promoApplyBtn');
   var inp=document.getElementById('promoInput');
@@ -524,7 +538,7 @@ function getDD(){
   var nmEl=document.getElementById('r_name');
   var emEl=document.getElementById('r_email');
   var phEl=document.getElementById('r_phone');
-  if(!nmEl||!emEl||!phEl)return null;
+    if(!nmEl||!emEl||!phEl)return null;
   var nm=nmEl.value.trim();
   var em=emEl.value.trim();
   var ph=cc.d+phEl.value.replace(/\D/g,'');
@@ -540,7 +554,7 @@ function getDD(){
     return{ty:ty,m:'ТК',cn:cn,sm:st==='pvz'?'ПВЗ':'Курьер ТК',a:ad,p:pt,disc:disc,discAmt:discAmt,finalSum:finalSum,origSum:origSum,nm:nm,em:em,ph:ph};
   }
   if(ty==='pickup'){
-        return{ty:ty,m:'Самовывоз',cn:'',sm:'',a:'Санкт-Петербург, Полярников 9',p:pt,disc:disc,discAmt:discAmt,finalSum:finalSum,origSum:origSum,nm:nm,em:em,ph:ph};
+    return{ty:ty,m:'Самовывоз',cn:'',sm:'',a:'Санкт-Петербург, Полярников 9',p:pt,disc:disc,discAmt:discAmt,finalSum:finalSum,origSum:origSum,nm:nm,em:em,ph:ph};
   }
   if(ty==='courier'){
     var strEl=document.getElementById('i_str');
@@ -679,6 +693,7 @@ function bindAll(){
       if(tca)tca.classList.toggle('visible',t==='tkc');
     });
   });
+  /* ПУНКТ 4: при клике на способ оплаты — моментальное обновление */
   document.querySelectorAll('.pay-opt').forEach(function(o){
     o.addEventListener('click',function(){
       if(this.classList.contains('pay-disabled'))return;
@@ -693,6 +708,7 @@ function bindAll(){
   initPromoField();
   watchTildaTotal();
   watchQuantityBtns();
+  startTotalPolling(); /* ПУНКТ 4: запуск polling */
 }
 
 function initDD(iid,sid){
