@@ -138,11 +138,15 @@ function readProdAmount(){
 }
 
 function calcCartBase(){
-  var sum=readProdAmount();
-  if(sum>0)return sum;
+  /* 1. Приоритет: строка "Сумма:" (prodamount) — её мы НЕ перезаписываем */
+  var el=document.querySelector('.t706__cartwin-prodamount-price');
+  if(el){
+    var s=parseSum(el.textContent);
+    if(s>0)return s;
+  }
 
-  /* fallback: считаем по товарам */
-  sum=0;
+  /* 2. Fallback: считаем по отдельным товарам */
+  var sum=0;
   var items=document.querySelectorAll('.t706__cartwin-product, .t706__cartpage-product');
   if(items.length>0){
     items.forEach(function(item){
@@ -151,19 +155,19 @@ function calcCartBase(){
         sum+=parseSum(priceEl.textContent);
       }
     });
+    if(sum>0)return sum;
   }
-  if(sum===0){
-    var el2=document.querySelector('.t706__cartwin-totalamount');
-    if(!el2)el2=document.querySelector('.t706__cartpage-totals-price');
-    if(el2){
-      var raw=parseSum(el2.textContent);
-      if(raw===_lastDisplayed&&_cartBase>0){
-        return _cartBase;
-      }
-      sum=raw;
-    }
+
+  /* 3. Последний fallback: totalamount, НО только если мы туда ещё не писали */
+  if(_cartBase>0)return _cartBase;   // <-- уже знаем базу, не читаем перезаписанное
+
+  var el2=document.querySelector('.t706__cartwin-totalamount');
+  if(!el2)el2=document.querySelector('.t706__cartpage-totals-price');
+  if(el2){
+    return parseSum(el2.textContent);
   }
-  return sum;
+
+  return 0;
 }
 
 function calcFinal(base){
