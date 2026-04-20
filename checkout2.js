@@ -7,8 +7,8 @@ document.head.appendChild(leafletJs);
 function init(){
 var DT='c9aa817ed1d374c93a7983bf2bb583b694319c1c';
 var SK='cst_checkout_data';
-var PROMO_DISCOUNTS={'OZON':5,'LS78':5,'WB':5};
-var QR_EXTRA_PERCENT=3;
+var PROMO_DISCOUNTS={'OZON':5,'LS78':5,'WB':5}; // % скидки промокодов — поправь под себя
+var QR_EXTRA_PERCENT=3;                          // % скидки за оплату QR
 var FORM_ID='form1888069311';
 var cc={n:'Россия',d:'+7',ml:10,ph:'(999) 999-99-99'};
 var mp=null,ins=false,mi=false,reord=false,agreeChecked=false,_injecting=false;
@@ -138,35 +138,14 @@ function readProdAmount(){
 }
 
 function calcCartBase(){
-  /* 1. Приоритет: строка "Сумма:" (prodamount) — её мы НЕ перезаписываем */
-  var el=document.querySelector('.t706__cartwin-prodamount-price');
-  if(el){
-    var s=parseSum(el.textContent);
-    if(s>0)return s;
-  }
-
-  /* 2. Fallback: считаем по отдельным товарам */
   var sum=0;
-  var items=document.querySelectorAll('.t706__cartwin-product, .t706__cartpage-product');
-  if(items.length>0){
-    items.forEach(function(item){
-      var priceEl=item.querySelector('.t706__cartwin-product-amount, .t706__cartpage-product-amount, [class*="product-amount"]');
-      if(priceEl){
-        sum+=parseSum(priceEl.textContent);
-      }
-    });
-    if(sum>0)return sum;
-  }
-
-  /* 3. Последний fallback: totalamount, НО только если мы туда ещё не писали */
-  if(_cartBase>0)return _cartBase;   // <-- уже знаем базу, не читаем перезаписанное
-
-  var el2=document.querySelector('.t706__cartwin-totalamount');
-  if(!el2)el2=document.querySelector('.t706__cartpage-totals-price');
-  if(el2){
-    return parseSum(el2.textContent);
-  }
-
+  var items=document.querySelectorAll('.t706__cartwin-product');
+  items.forEach(function(item){
+    var priceEl=item.querySelector('.t706__cartwin-product-amount');
+    if(priceEl) sum+=parseSum(priceEl.textContent);
+  });
+  if(sum>0) return sum;
+  if(_cartBase>0) return _cartBase;
   return 0;
 }
 
