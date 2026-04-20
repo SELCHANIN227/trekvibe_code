@@ -13,8 +13,6 @@ var FORM_ID='form1888069311';
 var cc={n:'Россия',d:'+7',ml:10,ph:'(999) 999-99-99'};
 var mp=null,ins=false,mi=false,reord=false,agreeChecked=false,_injecting=false,_origPrice=null;
 var _focused=false;
-var userPromoInput='';
-var _lastTildaTotal=null;
 
 document.addEventListener('focusin',function(e){
   if(e.target&&(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT')){
@@ -104,98 +102,11 @@ var pH='<div class="cst-block payment-block" id="pBlock">'
 +'<div class="pay-opt" data-p="qr" id="payQR"><div class="pay-radio"><div class="pay-dot"></div></div><div class="pay-label">QR-кодом<span>доступно для всех способов доставки</span></div><div class="pay-discount-badge">Скидка 3%</div></div>'
 +'<div class="pay-opt" data-p="cash" id="payCash" style="min-height:62px;"><div class="pay-radio"><div class="pay-dot"></div></div><div class="pay-label" style="display:flex;align-items:center;">Наличными при получении</div></div>'
 +'<div class="cst-discount-info" id="discountInfo"></div>'
-+'<div class="promo-wrap">'
-+'<label class="promo-label">Промокод</label>'
-+'<div class="promo-row" id="promoInputRow">'
-+'<input type="text" id="promoInput" placeholder="Введите промокод" maxlength="20" autocomplete="off"/>'
-+'<button type="button" class="promo-apply-btn" id="promoApplyBtn">Применить</button>'
-+'</div>'
-+'<div id="promoMsg" class="promo-msg"></div>'
-+'</div>'
 +'<div class="cst-agree-wrap" id="agreeWrap"><div class="cst-agree-box" id="agreeBox"><svg class="cst-agree-check" viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>'
 +'<div class="cst-agree-text">Согласен с <a href="https://trekvibe.ru/privacy" target="_blank">политикой обработки персональных данных</a> и <a href="https://trekvibe.ru/oferta" target="_blank">публичной офертой</a></div></div>'
 +'<div class="cst-agree-err" id="agreeErr">Необходимо согласие с политикой и офертой</div>'
 +'<div class="cst-val-err" id="cstValErr">Заполните обязательную информацию</div>'
 +'</div>';
-
-function parseSum(str){return parseInt((str||'').replace(/\s/g,'').replace(/[^\d]/g,''))||0;}
-function fmtSum(n){return n.toLocaleString('ru-RU')+' р.';}
-
-function getTildaRawTotal(){
-  var el=document.querySelector('.t706__cartwin-totalamount');
-  if(!el)el=document.querySelector('.t706__cartpage-totals-price');
-  if(!el)el=document.querySelector('[class*="cartwin-total"]');
-  if(!el)return 0;
-  var v=parseSum(el.textContent);
-  return v;
-}
-
-function readCartTotal(){
-  var v=getTildaRawTotal();
-  if(v>0){_lastTildaTotal=v;}
-  return _lastTildaTotal||0;
-}
-
-function updTotals(){
-  var base=readCartTotal();
-  if(!base)return;
-
-  var pa=document.querySelector('.pay-opt.active');
-  var isQR=pa&&pa.getAttribute('data-p')==='qr';
-  var qrDisc=isQR?Math.round(base*QR_DISCOUNT):0;
-  var afterQR=base-qrDisc;
-
-  var info=document.getElementById('discountInfo');
-  if(info){
-    if(qrDisc>0){
-      info.textContent='Скидка QR: -'+fmtSum(qrDisc);
-      info.classList.add('visible');
-    }else{
-      info.textContent='';
-      info.classList.remove('visible');
-    }
-  }
-
-  var totalEl=document.querySelector('.t706__cartwin-totalamount');
-  if(!totalEl)totalEl=document.querySelector('.t706__cartpage-totals-price');
-  if(!totalEl)totalEl=document.querySelector('[class*="cartwin-total"]');
-  if(totalEl){
-    totalEl.textContent=fmtSum(afterQR);
-  }
-}
-
-/* Наблюдатель за изменением суммы Tilda (кол-во товаров +/-) */
-function watchTildaTotal(){
-  var target=document.querySelector('.t706__cartwin-totalamount');
-  if(!target)target=document.querySelector('.t706__cartpage-totals-price');
-  if(!target)return;
-  var tOb=new MutationObserver(function(){
-    var raw=parseSum(target.textContent);
-    if(raw>0&&raw!==_lastTildaTotal){
-      _lastTildaTotal=raw;
-      updTotals();
-    }
-  });
-  tOb.observe(target,{childList:true,characterData:true,subtree:true});
-}
-
-/* Также ловим клики на +/- кнопках */
-function watchQuantityBtns(){
-  document.addEventListener('click',function(e){
-    var btn=e.target.closest('.t706__product-quantity__btn,.t706__cartwin-product-del,[class*="quantity"]');
-    if(!btn)return;
-    setTimeout(function(){
-      var raw=getTildaRawTotal();
-      if(raw>0){_lastTildaTotal=raw;}
-      updTotals();
-    },300);
-    setTimeout(function(){
-      var raw=getTildaRawTotal();
-      if(raw>0){_lastTildaTotal=raw;}
-      updTotals();
-    },800);
-  });
-}
 
 function setPromo(code){
   var cart=document.querySelector('.t706__cartwin');
@@ -214,62 +125,9 @@ function setPromo(code){
   }
 }
 
-function resolvePromoCode(){
-  var pa=document.querySelector('.pay-opt.active');
-  var isQR=pa&&pa.getAttribute('data-p')==='qr';
-  var code=userPromoInput.toUpperCase().trim();
-  var validCodes=['OZON','LS78','WB'];
-  var isValid=validCodes.indexOf(code)!==-1;
-
-  if(isValid&&isQR) return code+'QR';
-  if(isValid&&!isQR) return code;
-  if(!isValid&&isQR) return 'SALE5';
-  return '';
-}
-
 function applyPromo(){
-  var code=resolvePromoCode();
-  if(code){setPromo(code);}
-}
-
-function initPromoField(){
-  var btn=document.getElementById('promoApplyBtn');
-  var inp=document.getElementById('promoInput');
-  if(!btn||!inp)return;
-
-  var validCodes=['OZON','LS78','WB'];
-
-  btn.addEventListener('click',function(){
-    var code=inp.value.trim().toUpperCase();
-    var msg=document.getElementById('promoMsg');
-    inp.classList.remove('promo-err');
-    if(!code){
-      userPromoInput='';
-      if(msg){msg.textContent='';msg.className='promo-msg';}
-      updTotals();
-      return;
-    }
-    if(validCodes.indexOf(code)!==-1){
-      userPromoInput=code;
-      inp.classList.remove('promo-err');
-      if(msg){msg.textContent='✓ Промокод '+code+' принят!';msg.className='promo-msg success';}
-    }else{
-      userPromoInput='';
-      inp.classList.add('promo-err');
-      if(msg){msg.textContent='Промокод не найден';msg.className='promo-msg error';}
-    }
-    updTotals();
-  });
-
-  inp.addEventListener('input',function(){
-    this.classList.remove('promo-err');
-    var msg=document.getElementById('promoMsg');
-    if(msg&&msg.classList.contains('error')){msg.textContent='';msg.className='promo-msg';}
-  });
-
-  inp.addEventListener('keydown',function(e){
-    if(e.key==='Enter'){e.preventDefault();btn.click();}
-  });
+  var pa=document.querySelector('.pay-opt.active');
+  if(pa&&pa.getAttribute('data-p')==='qr'){setPromo(QR_PROMO);}
 }
 
 function renderCountries(f){
@@ -351,6 +209,30 @@ function initAgree(){
     }
     saveState();
   });
+}
+
+function updDiscount(){
+  var pa=document.querySelector('.pay-opt.active');
+  var info=document.getElementById('discountInfo');
+  if(!info)return;
+  var totalEl=document.querySelector('.t706__cartwin-totalamount')||document.querySelector('.t706__cartpage-totals-price')||document.querySelector('[class*="cartwin-total"]');
+  if(!totalEl)return;
+  function parseSum(str){return parseInt((str||'').replace(/\s/g,'').replace(/[^\d]/g,''))||0;}
+  if(_origPrice===null){
+    var raw=totalEl.getAttribute('data-orig')||totalEl.textContent;
+    var cur=parseSum(raw);
+    if(cur>0){_origPrice=cur;}else return;
+  }
+  if(pa&&pa.getAttribute('data-p')==='qr'){
+    var disc=Math.round(_origPrice*QR_DISCOUNT);
+    var fin=_origPrice-disc;
+    info.textContent='Скидка: '+disc.toLocaleString('ru-RU')+' р.';
+    info.classList.add('visible');
+    totalEl.textContent=fin.toLocaleString('ru-RU')+' р.';
+  }else{
+    info.classList.remove('visible');
+    totalEl.textContent=_origPrice.toLocaleString('ru-RU')+' р.';
+  }
 }
 
 function validate(){
@@ -486,7 +368,7 @@ function restoreState(){
     if(pe&&!pe.classList.contains('pay-disabled')){
       document.querySelectorAll('.pay-opt').forEach(function(x){x.classList.remove('active');});
       pe.classList.add('active');
-      updTotals();
+      updDiscount();
     }
   }
   if(d.ag){
@@ -514,11 +396,10 @@ function getDD(){
   var ty=ac.getAttribute('data-d');
   var pa=document.querySelector('.pay-opt.active');
   var pt='',disc=false,discAmt=0,origSum=0,finalSum=0;
-  var base=readCartTotal();
   if(pa){
     var pv=pa.getAttribute('data-p');
     if(pv==='card'){pt='Картой';}
-    else if(pv==='qr'){pt='QR-код';disc=true;origSum=base;discAmt=Math.round(base*QR_DISCOUNT);finalSum=base-discAmt;}
+    else if(pv==='qr'){pt='QR-код';disc=true;origSum=_origPrice||0;discAmt=Math.round(origSum*QR_DISCOUNT);finalSum=origSum-discAmt;}
     else if(pv==='cash'){pt='Наличными';}
   }
   var nmEl=document.getElementById('r_name');
@@ -540,7 +421,7 @@ function getDD(){
     return{ty:ty,m:'ТК',cn:cn,sm:st==='pvz'?'ПВЗ':'Курьер ТК',a:ad,p:pt,disc:disc,discAmt:discAmt,finalSum:finalSum,origSum:origSum,nm:nm,em:em,ph:ph};
   }
   if(ty==='pickup'){
-        return{ty:ty,m:'Самовывоз',cn:'',sm:'',a:'Санкт-Петербург, Полярников 9',p:pt,disc:disc,discAmt:discAmt,finalSum:finalSum,origSum:origSum,nm:nm,em:em,ph:ph};
+    return{ty:ty,m:'Самовывоз',cn:'',sm:'',a:'Санкт-Петербург, Полярников 9',p:pt,disc:disc,discAmt:discAmt,finalSum:finalSum,origSum:origSum,nm:nm,em:em,ph:ph};
   }
   if(ty==='courier'){
     var strEl=document.getElementById('i_str');
@@ -602,7 +483,7 @@ function unlockScroll(){
 }
 
 function showSuccess(){
-  _origPrice=null;_lastTildaTotal=null;ins=false;reord=false;
+  _origPrice=null;ins=false;reord=false;
   var cartWin=document.querySelector('.t706__cartwin');
   if(cartWin){cartWin.style.display='none';cartWin.style.pointerEvents='none';}
   var overlay=document.querySelector('.t706__overlay');
@@ -640,7 +521,7 @@ function updPay(){
   if(!payCard||!payQR||!payCash)return;
   [payCard,payQR,payCash].forEach(function(o){o.classList.remove('pay-disabled');});
   if(ty!=='pickup'){payCash.classList.add('pay-disabled');payCash.classList.remove('active');}
-  updTotals();
+  updDiscount();
 }
 
 function selDlv(el){
@@ -684,15 +565,12 @@ function bindAll(){
       if(this.classList.contains('pay-disabled'))return;
       document.querySelectorAll('.pay-opt').forEach(function(x){x.classList.remove('active');});
       this.classList.add('active');
-      updTotals();
+      updDiscount();
     });
   });
   initDD('i_pvz','dd-pvz');
   initDD('i_tkc','dd-tkc');
   updPay();
-  initPromoField();
-  watchTildaTotal();
-  watchQuantityBtns();
 }
 
 function initDD(iid,sid){
@@ -763,7 +641,7 @@ function tryIns(){
   var hasP=document.getElementById('pBlock');
   if(ins&&hasR&&hasD&&hasP)return;
   if(!hasR||!hasD||!hasP){
-    _origPrice=null;_lastTildaTotal=null;
+    _origPrice=null;
     ins=false;
     reord=false;
   }
@@ -881,12 +759,10 @@ function inject(){
     var btn=form.querySelector('button.t-submit,button[type="submit"]');
     if(!btn){_injecting=false;return;}
     btn.style.cssText='';
-    var promoCode=resolvePromoCode();
-    var hasPromo=!!promoCode;
-    if(hasPromo)applyPromo();
+    if(d.disc)applyPromo();
     setTimeout(function(){
       btn.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));
-    },hasPromo?1500:0);
+    },d.disc?1500:0);
     setTimeout(function(){
       hideTildaSubmit();
       _injecting=false;
