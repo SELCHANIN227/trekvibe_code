@@ -253,47 +253,94 @@
 }
 
 /* ===== ПРОМОКОД ===== */
+.promo-section-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #fff;
+  margin: 30px 0 12px;
+}
+
 .promo-wrap {
   display: flex;
-  gap: 8px;
-  margin: 12px 0 20px;
-  max-width: 400px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
 }
 
 .promo-wrap input {
   flex: 1;
-  padding: 10px 14px;
-  border: 1px solid #ccc;
+  padding: 14px 16px;
+  border: 1px solid rgba(255,255,255,0.2);
   border-radius: 8px;
   font-size: 15px;
   outline: none;
+  background: rgba(255,255,255,0.06);
+  color: #fff;
   transition: border-color .2s;
+  min-width: 0;
+}
+
+.promo-wrap input::placeholder {
+  color: rgba(255,255,255,0.35);
 }
 
 .promo-wrap input:focus {
-  border-color: #222;
+  border-color: #e8732a;
 }
 
 .promo-wrap button {
-  padding: 10px 20px;
-  background: #222;
+  padding: 14px 24px;
+  background: transparent;
   color: #fff;
-  border: none;
+  border: 1px solid rgba(255,255,255,0.3);
   border-radius: 8px;
   font-size: 15px;
   cursor: pointer;
   white-space: nowrap;
-  transition: background .2s;
+  flex-shrink: 0;
+  transition: all .2s;
 }
 
 .promo-wrap button:hover {
-  background: #444;
+  border-color: #e8732a;
+  color: #e8732a;
 }
 
+/* Сообщение об успехе */
 .promo-msg {
-  font-size: 13px;
-  margin-top: 4px;
+  font-size: 14px;
+  margin-top: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
 }
 
-.promo-msg.success { color: #27ae60; }
-.promo-msg.error   { color: #e74c3c; }
+.promo-msg.success {
+  background: rgba(39, 174, 96, 0.15);
+  border: 1px solid rgba(39, 174, 96, 0.4);
+  color: #4cd964;
+}
+
+.promo-msg.error {
+  color: #e74c3c;
+  background: none;
+  border: none;
+  padding: 4px 0;
+}
+
+/* Блок скидок перед итоговой суммой */
+.discount-details {
+  text-align: center;
+  color: rgba(255,255,255,0.7);
+  font-size: 14px;
+  line-height: 1.8;
+  margin: 16px 0 8px;
+}
+
+.discount-details span {
+  display: block;
+}
+
+.discount-details .discount-total {
+  color: #fff;
+  font-weight: 600;
+}
