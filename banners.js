@@ -22,7 +22,7 @@
     if(sessionStorage.getItem('tvb_shown')) return;
     sessionStorage.setItem('tvb_shown','1');
     b1visible = true;
-    b1.style.visibility = 'visible';
+    if(b1) b1.style.visibility = 'visible';
     setTimeout(function(){ b1.classList.add('tvb-show'); }, 50);
     b1timer = setTimeout(b1hide, 10000);
   }
