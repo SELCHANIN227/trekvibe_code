@@ -13,6 +13,7 @@ var FORM_ID='form1888069311';
 var cc={n:'Россия',d:'+7',ml:10,ph:'(999) 999-99-99'};
 var mp=null,ins=false,mi=false,reord=false,agreeChecked=false,_injecting=false,_origPrice=null;
 var _focused=false;
+var userPromoInput='';
 
 document.addEventListener('focusin',function(e){
   if(e.target&&(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT')){
@@ -102,6 +103,14 @@ var pH='<div class="cst-block payment-block" id="pBlock">'
 +'<div class="pay-opt" data-p="qr" id="payQR"><div class="pay-radio"><div class="pay-dot"></div></div><div class="pay-label">QR-кодом<span>доступно для всех способов доставки</span></div><div class="pay-discount-badge">Скидка 3%</div></div>'
 +'<div class="pay-opt" data-p="cash" id="payCash" style="min-height:62px;"><div class="pay-radio"><div class="pay-dot"></div></div><div class="pay-label" style="display:flex;align-items:center;">Наличными при получении</div></div>'
 +'<div class="cst-discount-info" id="discountInfo"></div>'
++'<div class="promo-wrap">'
++'<label class="promo-label">Промокод</label>'
++'<div class="promo-row" id="promoInputRow">'
++'<input type="text" id="promoInput" placeholder="Введите промокод" maxlength="20" autocomplete="off"/>'
++'<button type="button" class="promo-apply-btn" id="promoApplyBtn">Применить</button>'
++'</div>'
++'<div id="promoMsg" class="promo-msg"></div>'
++'</div>'
 +'<div class="cst-agree-wrap" id="agreeWrap"><div class="cst-agree-box" id="agreeBox"><svg class="cst-agree-check" viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>'
 +'<div class="cst-agree-text">Согласен с <a href="https://trekvibe.ru/privacy" target="_blank">политикой обработки персональных данных</a> и <a href="https://trekvibe.ru/oferta" target="_blank">публичной офертой</a></div></div>'
 +'<div class="cst-agree-err" id="agreeErr">Необходимо согласие с политикой и офертой</div>'
@@ -125,9 +134,51 @@ function setPromo(code){
   }
 }
 
-function applyPromo(){
+function resolvePromoCode(){
   var pa=document.querySelector('.pay-opt.active');
-  if(pa&&pa.getAttribute('data-p')==='qr'){setPromo(QR_PROMO);}
+  var isQR=pa&&pa.getAttribute('data-p')==='qr';
+  var code=userPromoInput.toUpperCase().trim();
+  var validCodes=['OZON','LS78','WB'];
+  var isValid=validCodes.indexOf(code)!==-1;
+
+  if(isValid&&isQR) return code+'QR';
+  if(isValid&&!isQR) return code;
+  if(!isValid&&isQR) return 'SALE5';
+  return '';
+}
+
+function applyPromo(){
+  var code=resolvePromoCode();
+  if(code){setPromo(code);}
+}
+
+function initPromoField(){
+  var btn=document.getElementById('promoApplyBtn');
+  var inp=document.getElementById('promoInput');
+  if(!btn||!inp)return;
+
+  var validCodes=['OZON','LS78','WB'];
+
+  btn.addEventListener('click',function(){
+    var code=inp.value.trim().toUpperCase();
+    var msg=document.getElementById('promoMsg');
+    if(!code){
+      userPromoInput='';
+      if(msg){msg.textContent='';msg.className='promo-msg';}
+      return;
+    }
+    if(validCodes.indexOf(code)!==-1){
+      userPromoInput=code;
+      if(msg){msg.textContent='✓ Промокод '+code+' принят!';msg.className='promo-msg success';}
+    }else{
+      userPromoInput='';
+      if(msg){msg.textContent='Промокод не найден';msg.className='promo-msg error';}
+    }
+  });
+
+  inp.addEventListener('keydown',function(e){
+    if(e.key==='Enter'){e.preventDefault();btn.click();}
+  });
 }
 
 function renderCountries(f){
@@ -571,6 +622,7 @@ function bindAll(){
   initDD('i_pvz','dd-pvz');
   initDD('i_tkc','dd-tkc');
   updPay();
+  initPromoField();
 }
 
 function initDD(iid,sid){
@@ -758,11 +810,13 @@ function inject(){
     if(!form){_injecting=false;return;}
     var btn=form.querySelector('button.t-submit,button[type="submit"]');
     if(!btn){_injecting=false;return;}
-    btn.style.cssText='';
-    if(d.disc)applyPromo();
+       btn.style.cssText='';
+    var promoCode=resolvePromoCode();
+    var hasPromo=!!promoCode;
+    if(hasPromo)applyPromo();
     setTimeout(function(){
       btn.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));
-    },d.disc?1500:0);
+    },hasPromo?1500:0);
     setTimeout(function(){
       hideTildaSubmit();
       _injecting=false;
