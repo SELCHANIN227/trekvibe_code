@@ -254,7 +254,7 @@
 
 /* ===== ПРОМОКОД ===== */
 .promo-wrap {
-  margin: 20px 0 0;
+  margin: 50px 0 0;
 }
 
 .promo-label {
@@ -274,40 +274,48 @@
 
 .promo-row input {
   flex: 1;
-  padding: 13px 16px;
-  border: 1px solid rgba(255,255,255,0.18);
-  border-radius: 8px;
-  font-size: 15px;
+  height: 48px;
+  padding: 0 16px;
+  border: 1px solid #444;
+  border-radius: 10px;
+  font-size: 14px;
   outline: none;
-  background: rgba(255,255,255,0.06);
+  background: transparent;
   color: #fff;
-  transition: border-color .2s;
+  transition: border-color .25s;
   min-width: 0;
+  box-sizing: border-box;
 }
 
 .promo-row input::placeholder {
-  color: rgba(255,255,255,0.3);
+  color: #666;
 }
 
 .promo-row input:focus {
-  border-color: rgba(255,255,255,0.4);
+  border-color: #FF6B35;
+}
+
+.promo-row input.promo-err {
+  border-color: #ff4444 !important;
 }
 
 .promo-apply-btn {
-  padding: 13px 22px;
+  height: 48px;
+  padding: 0 22px;
   background: transparent;
   color: rgba(255,255,255,0.7);
-  border: 1px solid rgba(255,255,255,0.18);
-  border-radius: 8px;
-  font-size: 15px;
+  border: 1px solid #444;
+  border-radius: 10px;
+  font-size: 14px;
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
-  transition: all .2s;
+  transition: all .25s;
+  box-sizing: border-box;
 }
 
 .promo-apply-btn:hover {
-  border-color: rgba(255,255,255,0.4);
+  border-color: #FF6B35;
   color: #fff;
 }
 
