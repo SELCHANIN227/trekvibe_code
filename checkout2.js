@@ -7,8 +7,8 @@ document.head.appendChild(leafletJs);
 function init(){
 var DT='c9aa817ed1d374c93a7983bf2bb583b694319c1c';
 var SK='cst_checkout_data';
-var PROMO_DISCOUNTS={'OZON':5,'LS78':5,'WB':5}; // % скидки промокодов — поправь под себя
-var QR_EXTRA_PERCENT=3;                          // % скидки за оплату QR
+var PROMO_DISCOUNTS={'OZON':5,'LS78':5,'WB':5};
+var QR_EXTRA_PERCENT=3;
 var FORM_ID='form1888069311';
 var cc={n:'Россия',d:'+7',ml:10,ph:'(999) 999-99-99'};
 var mp=null,ins=false,mi=false,reord=false,agreeChecked=false,_injecting=false;
