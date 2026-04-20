@@ -8,15 +8,18 @@ function init(){
 var DT='c9aa817ed1d374c93a7983bf2bb583b694319c1c';
 var SK='cst_checkout_data';
 var QR_DISCOUNT=0.03;
-var QR_PROMO='SALE5';
 var FORM_ID='form1888069311';
 var cc={n:'Россия',d:'+7',ml:10,ph:'(999) 999-99-99'};
 var mp=null,ins=false,mi=false,reord=false,agreeChecked=false,_injecting=false;
 var _focused=false;
 var userPromoInput='';
-var _basePrice=0;
 var _pollingStarted=false;
 var _watchersStarted=false;
+
+/* ===== ЯДРО: единый источник правды для суммы ===== */
+var _cartBase=0;       /* чистая сумма товаров из Tilda (без наших модификаций) */
+var _lastDisplayed=0;  /* что мы последний раз записали в DOM */
+var _writing=false;    /* флаг: мы сейчас пишем в DOM */
 
 document.addEventListener('focusin',function(e){
   if(e.target&&(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT')){
@@ -120,40 +123,70 @@ var pH='<div class="cst-block payment-block" id="pBlock">'
 +'<div class="cst-val-err" id="cstValErr">Заполните обязательную информацию</div>'
 +'</div>';
 
+/* ===== УТИЛИТЫ ===== */
 function parseSum(str){return parseInt((str||'').replace(/\s/g,'').replace(/[^\d]/g,''))||0;}
 function fmtSum(n){return n.toLocaleString('ru-RU')+' р.';}
 
-/* Читаем ОРИГИНАЛЬНУЮ сумму из Tilda DOM, но отключаем свой observer на время чтения */
-var _reading=false;
-function getTildaRawTotal(){
-  var el=document.querySelector('.t706__cartwin-totalamount');
-  if(!el)el=document.querySelector('.t706__cartpage-totals-price');
-  if(!el)el=document.querySelector('[class*="cartwin-total"]');
-  if(!el)return 0;
-  return parseSum(el.textContent);
+/* ===== ЧТЕНИЕ СУММЫ ТОВАРОВ ИЗ TILDA ===== */
+/* Считываем сумму каждого товара в корзине и складываем — это надёжнее чем читать total */
+function calcCartBase(){
+  var sum=0;
+  var items=document.querySelectorAll('.t706__cartwin-product, .t706__cartpage-product');
+  if(items.length>0){
+    items.forEach(function(item){
+      var priceEl=item.querySelector('.t706__cartwin-product-amount, .t706__cartpage-product-amount, [class*="product-amount"]');
+      if(priceEl){
+        sum+=parseSum(priceEl.textContent);
+      }
+    });
+  }
+  /* Если не удалось посчитать по товарам — fallback на total */
+  if(sum===0){
+    var el=document.querySelector('.t706__cartwin-totalamount');
+    if(!el)el=document.querySelector('.t706__cartpage-totals-price');
+    if(!el)el=document.querySelector('[class*="cartwin-total"]');
+    if(el){
+      var raw=parseSum(el.textContent);
+      /* Проверяем: если raw совпадает с тем что мы записали — значит это наша модификация */
+      /* Тогда используем сохранённый _cartBase */
+      if(raw===_lastDisplayed&&_cartBase>0){
+        return _cartBase;
+      }
+      sum=raw;
+    }
+  }
+  return sum;
 }
 
-/* Захватываем базовую цену — только когда Tilda сама меняет сумму (не мы) */
-function captureBasePrice(){
-  var raw=getTildaRawTotal();
-  if(raw>0)_basePrice=raw;
-  return _basePrice;
-}
-
-/* updTotals — всегда считает от _basePrice, никогда не накапливает */
-function updTotals(){
-  var base=_basePrice;
-  if(!base)return;
-
+/* ===== ЕДИНАЯ ФОРМУЛА ИТОГА ===== */
+/* base = сумма товаров */
+/* - QR скидка (если выбран QR) */
+/* Промокод НЕ влияет на отображаемую сумму — он применяется в Tilda при отправке */
+function calcFinal(base){
   var pa=document.querySelector('.pay-opt.active');
   var isQR=pa&&pa.getAttribute('data-p')==='qr';
   var qrDisc=isQR?Math.round(base*QR_DISCOUNT):0;
-  var afterQR=base-qrDisc;
+  return{
+    base:base,
+    qrDisc:qrDisc,
+    total:base-qrDisc,
+    isQR:isQR
+  };
+}
 
+/* ===== ОБНОВЛЕНИЕ ОТОБРАЖЕНИЯ ===== */
+/* Вызывается когда что-то изменилось. Пишет в DOM только если итог реально другой */
+function updDisplay(){
+  var base=_cartBase;
+  if(!base||base<=0)return;
+
+  var calc=calcFinal(base);
+
+  /* Блок скидки */
   var info=document.getElementById('discountInfo');
   if(info){
-    if(qrDisc>0){
-      info.textContent='Скидка QR: -'+fmtSum(qrDisc);
+    if(calc.qrDisc>0){
+      info.textContent='Скидка QR: -'+fmtSum(calc.qrDisc);
       info.classList.add('visible');
     }else{
       info.textContent='';
@@ -161,82 +194,83 @@ function updTotals(){
     }
   }
 
+  /* Записываем итог в DOM только если он изменился */
+  if(calc.total===_lastDisplayed)return;
+
   var totalEl=document.querySelector('.t706__cartwin-totalamount');
   if(!totalEl)totalEl=document.querySelector('.t706__cartpage-totals-price');
   if(!totalEl)totalEl=document.querySelector('[class*="cartwin-total"]');
   if(totalEl){
-    _reading=true;
-    totalEl.textContent=fmtSum(afterQR);
-    _reading=false;
+    _writing=true;
+    totalEl.textContent=fmtSum(calc.total);
+    _lastDisplayed=calc.total;
+    _writing=false;
   }
 }
 
-/* Наблюдатель — ловим когда TILDA сама меняет сумму (товар +/-, удаление) */
-function watchTildaTotal(){
-  if(_watchersStarted)return;
-  _watchersStarted=true;
-  var target=document.querySelector('.t706__cartwin-totalamount');
-  if(!target)target=document.querySelector('.t706__cartpage-totals-price');
-  if(!target)return;
-  var tOb=new MutationObserver(function(){
-    if(_reading)return; /* игнорируем наши собственные записи */
-    var raw=parseSum(target.textContent);
-    if(raw>0){
-      _basePrice=raw;
-      updTotals();
+/* ===== ГЛАВНЫЙ ТИКЕР: проверяет всё каждые 300мс ===== */
+function startMainTicker(){
+  if(_pollingStarted)return;
+  _pollingStarted=true;
+
+  setInterval(function(){
+    var newBase=calcCartBase();
+
+    /* Если база изменилась (товар добавлен/удалён/кол-во) — обновляем */
+    if(newBase>0&&newBase!==_cartBase){
+      _cartBase=newBase;
     }
-  });
-  tOb.observe(target,{childList:true,characterData:true,subtree:true});
+
+    /* Пересчитываем и обновляем отображение */
+    if(_cartBase>0){
+      updDisplay();
+    }
+  },300);
 }
 
-/* Клики по +/- и удалению — перечитываем базу после задержки */
+/* ===== MutationObserver — ловим когда Tilda меняет DOM корзины ===== */
+function watchCartDOM(){
+  if(_watchersStarted)return;
+  _watchersStarted=true;
+
+  var target=document.querySelector('.t706__cartwin-content, .t706__cartpage-content');
+  if(!target)target=document.querySelector('.t706__cartwin');
+  if(!target)return;
+
+  var cartOb=new MutationObserver(function(){
+    if(_writing)return;
+    /* Tilda что-то изменила — пересчитываем базу */
+    setTimeout(function(){
+      var newBase=calcCartBase();
+      if(newBase>0&&newBase!==_cartBase){
+        _cartBase=newBase;
+        updDisplay();
+      }
+    },50);
+  });
+
+  cartOb.observe(target,{childList:true,subtree:true,characterData:true});
+}
+
+/* ===== Клики по +/- и удалению ===== */
 function watchQuantityBtns(){
   document.addEventListener('click',function(e){
     var btn=e.target.closest('.t706__product-quantity__btn,.t706__cartwin-product-del,[class*="quantity"],[class*="product-del"],[class*="cart-del"]');
     if(!btn)return;
-    /* Временно убираем свою скидку чтобы Tilda записала чистую сумму */
-    var delays=[200,400,700,1000,1500];
-    delays.forEach(function(d){
+    /* Серия проверок с задержкой — Tilda обновляет DOM асинхронно */
+    [100,250,500,800,1200].forEach(function(d){
       setTimeout(function(){
-        /* Tilda уже обновила DOM — но там может быть наша скидочная сумма
-           Читаем и если она отличается от текущей basePrice — обновляем */
-        var raw=getTildaRawTotal();
-        if(raw>0&&raw!==_basePrice){
-          _basePrice=raw;
+        var newBase=calcCartBase();
+        if(newBase>0){
+          _cartBase=newBase;
+          updDisplay();
         }
-        updTotals();
       },d);
     });
   });
 }
 
-/* Polling — подстраховка. Читаем DOM, но проверяем не наша ли это запись */
-function startTotalPolling(){
-  if(_pollingStarted)return;
-  _pollingStarted=true;
-  setInterval(function(){
-    if(_reading)return;
-    var raw=getTildaRawTotal();
-    /* Если в DOM стоит значение отличное от того что мы записали — значит Tilda обновила */
-    var pa=document.querySelector('.pay-opt.active');
-    var isQR=pa&&pa.getAttribute('data-p')==='qr';
-    var expectedDisplay=isQR?_basePrice-Math.round(_basePrice*QR_DISCOUNT):_basePrice;
-    if(raw>0&&raw!==expectedDisplay&&raw!==_basePrice){
-      /* Неизвестное значение — скорее всего Tilda обновила после +/- */
-      _basePrice=raw;
-      updTotals();
-    }else if(raw>0&&raw!==expectedDisplay&&raw===_basePrice){
-      /* Tilda вернула базу (например QR сняли) — просто обновляем отображение */
-      updTotals();
-    }
-    /* Если _basePrice ещё 0 — захватываем первое значение */
-    if(_basePrice===0&&raw>0){
-      _basePrice=raw;
-      updTotals();
-    }
-  },500);
-}
-
+/* ===== ПРОМОКОД ===== */
 function setPromo(code){
   var cart=document.querySelector('.t706__cartwin');
   if(!cart)return;
@@ -260,7 +294,6 @@ function resolvePromoCode(){
   var code=userPromoInput.toUpperCase().trim();
   var validCodes=['OZON','LS78','WB'];
   var isValid=validCodes.indexOf(code)!==-1;
-
   if(isValid&&isQR) return code+'QR';
   if(isValid&&!isQR) return code;
   if(!isValid&&isQR) return 'SALE5';
@@ -282,15 +315,12 @@ function initPromoField(){
   btn.addEventListener('click',function(){
     var code=inp.value.trim().toUpperCase();
     var msg=document.getElementById('promoMsg');
-    var row=document.getElementById('promoInputRow');
     inp.classList.remove('promo-err');
     if(msg){msg.textContent='';msg.className='promo-msg';}
-    /* Убеждаемся что поле видимо */
-    if(row)row.style.display='';
 
     if(!code){
       userPromoInput='';
-      updTotals();
+      updDisplay();
       return;
     }
     if(validCodes.indexOf(code)!==-1){
@@ -301,7 +331,7 @@ function initPromoField(){
       inp.classList.add('promo-err');
       if(msg){msg.textContent='Промокод не найден';msg.className='promo-msg error';}
     }
-    updTotals();
+    updDisplay();
   });
 
   inp.addEventListener('input',function(){
@@ -315,6 +345,7 @@ function initPromoField(){
   });
 }
 
+/* ===== ТЕЛЕФОН И СТРАНЫ ===== */
 function renderCountries(f){
   var box=document.getElementById('countryItems');
   if(!box)return;
@@ -379,6 +410,7 @@ function initPhone(){
   });
 }
 
+/* ===== СОГЛАСИЕ ===== */
 function initAgree(){
   var wrap=document.getElementById('agreeWrap');
   var box=document.getElementById('agreeBox');
@@ -396,6 +428,7 @@ function initAgree(){
   });
 }
 
+/* ===== ВАЛИДАЦИЯ ===== */
 function validate(){
   var ok=true;
   var valErr=document.getElementById('cstValErr');
@@ -478,7 +511,7 @@ function clearErr(){
   var ph=document.getElementById('r_phone');
   var pw=document.getElementById('phoneWrap');
   if(ph&&pw)ph.addEventListener('input',function(){pw.classList.remove('cst-err');hideValErr();});
-    ['i_str','i_hou','i_pvz','i_tkc'].forEach(function(id){
+  ['i_str','i_hou','i_pvz','i_tkc'].forEach(function(id){
     var el=document.getElementById(id);
     if(el)el.addEventListener('input',function(){this.classList.remove('cst-err');hideValErr();});
   });
@@ -503,6 +536,7 @@ function saveState(){
   data.cm=(document.getElementById('i_cmt')||{}).value||'';
   var pa=document.querySelector('.pay-opt.active');data.py=pa?pa.getAttribute('data-p'):'';
   data.ag=agreeChecked;
+  data.pr=userPromoInput;
   try{localStorage.setItem(SK,JSON.stringify(data));}catch(e){}
 }
 
@@ -529,7 +563,6 @@ function restoreState(){
     if(pe&&!pe.classList.contains('pay-disabled')){
       document.querySelectorAll('.pay-opt').forEach(function(x){x.classList.remove('active');});
       pe.classList.add('active');
-      updTotals();
     }
   }
   if(d.ag){
@@ -537,6 +570,14 @@ function restoreState(){
     var ab=document.getElementById('agreeBox');
     if(ab)ab.classList.add('checked');
   }
+  if(d.pr){
+    userPromoInput=d.pr;
+    var pi=document.getElementById('promoInput');
+    if(pi)pi.value=d.pr;
+    var msg=document.getElementById('promoMsg');
+    if(msg){msg.textContent='✓ Промокод '+d.pr+' принят!';msg.className='promo-msg success';}
+  }
+  updDisplay();
 }
 
 function bindSave(){
@@ -547,7 +588,11 @@ function bindSave(){
   var sl=document.getElementById('selTK');
   if(sl)sl.addEventListener('change',saveState);
   document.querySelectorAll('.dlv-opt,.dlv-sub-o,.pay-opt').forEach(function(o){
-    o.addEventListener('click',saveState);
+    o.addEventListener('click',function(){
+      saveState();
+      /* При смене способа оплаты — пересчитать итог */
+      setTimeout(updDisplay,50);
+    });
   });
 }
 
@@ -556,14 +601,15 @@ function getDD(){
   if(!ac)return null;
   var ty=ac.getAttribute('data-d');
   var pa=document.querySelector('.pay-opt.active');
+  var calc=calcFinal(_cartBase);
   var pt='',disc=false,discAmt=0,origSum=0,finalSum=0;
-  var base=_basePrice;
   if(pa){
     var pv=pa.getAttribute('data-p');
     if(pv==='card'){pt='Картой';}
-    else if(pv==='qr'){pt='QR-код';disc=true;origSum=base;discAmt=Math.round(base*QR_DISCOUNT);finalSum=base-discAmt;}
+    else if(pv==='qr'){pt='QR-код';disc=true;origSum=calc.base;discAmt=calc.qrDisc;finalSum=calc.total;}
     else if(pv==='cash'){pt='Наличными';}
   }
+  if(!disc){finalSum=calc.total;origSum=calc.base;}
   var nmEl=document.getElementById('r_name');
   var emEl=document.getElementById('r_email');
   var phEl=document.getElementById('r_phone');
@@ -645,7 +691,7 @@ function unlockScroll(){
 }
 
 function showSuccess(){
-  _basePrice=0;ins=false;reord=false;
+  _cartBase=0;_lastDisplayed=0;ins=false;reord=false;
   var cartWin=document.querySelector('.t706__cartwin');
   if(cartWin){cartWin.style.display='none';cartWin.style.pointerEvents='none';}
   var overlay=document.querySelector('.t706__overlay');
@@ -683,7 +729,7 @@ function updPay(){
   if(!payCard||!payQR||!payCash)return;
   [payCard,payQR,payCash].forEach(function(o){o.classList.remove('pay-disabled');});
   if(ty!=='pickup'){payCash.classList.add('pay-disabled');payCash.classList.remove('active');}
-  updTotals();
+  updDisplay();
 }
 
 function selDlv(el){
@@ -709,7 +755,15 @@ function bindAll(){
   var s=document.getElementById('selTK');
   if(s)s.addEventListener('change',function(){
     var sb=document.getElementById('tk-sub');
-    if(sb&&this');
+    if(sb&&this.value)sb.classList.add('visible');
+  });
+  document.querySelectorAll('.dlv-sub-o').forEach(function(o){
+    o.addEventListener('click',function(){
+      document.querySelectorAll('.dlv-sub-o').forEach(function(x){x.classList.remove('active');});
+      this.classList.add('active');
+      var t=this.getAttribute('data-ts');
+      var pvz=document.getElementById('tk-pvz');
+      var tca=document.getElementById('tk-ca');
       if(pvz)pvz.classList.toggle('visible',t==='pvz');
       if(tca)tca.classList.toggle('visible',t==='tkc');
     });
@@ -719,18 +773,20 @@ function bindAll(){
       if(this.classList.contains('pay-disabled'))return;
       document.querySelectorAll('.pay-opt').forEach(function(x){x.classList.remove('active');});
       this.classList.add('active');
-      updTotals();
+      updDisplay();
     });
   });
   initDD('i_pvz','dd-pvz');
   initDD('i_tkc','dd-tkc');
   updPay();
   initPromoField();
-  /* Захватываем базовую цену при первой инициализации */
-  captureBasePrice();
-  watchTildaTotal();
+  /* Считываем базовую цену при инициализации */
+  _cartBase=calcCartBase();
+  _lastDisplayed=0;
+  updDisplay();
+  startMainTicker();
+  watchCartDOM();
   watchQuantityBtns();
-  startTotalPolling();
 }
 
 function initDD(iid,sid){
@@ -801,9 +857,8 @@ function tryIns(){
   var hasP=document.getElementById('pBlock');
   if(ins&&hasR&&hasD&&hasP)return;
   if(!hasR||!hasD||!hasP){
-    _basePrice=0;
-    ins=false;
-    reord=false;
+    _cartBase=0;_lastDisplayed=0;
+    ins=false;reord=false;
   }
   if(hasR&&hasD&&hasP){ins=true;if(!reord)reorder();return;}
   if(hasR)hasR.remove();
@@ -1002,23 +1057,19 @@ var ob=new MutationObserver(function(mu){
 
 var scrollOb=new MutationObserver(function(){
   var ov=document.getElementById('cstSuccessOverlay');
-  if(!ov)return;
-  if(document.body.style.overflow==='hidden')document.body.style.overflow='';
-  if(document.body.style.overflowY==='hidden')document.body.style.overflowY='';
-  if(document.documentElement.style.overflow==='hidden')document.documentElement.style.overflow='';
-  if(document.documentElement.style.overflowY==='hidden')document.documentElement.style.overflowY='';
-  if(document.body.classList.contains('t-body_popupopened'))document.body.classList.remove('t-body_popupopened');
+  if(ov)return;
+  if(document.body.style.overflow==='hidden'||document.body.classList.contains('t-body_popupopened')){
+    var cartWin=document.querySelector('.t706__cartwin');
+    if(!cartWin||cartWin.style.display==='none'||!cartWin.classList.contains('t706__cartwin_showed')){
+      unlockScroll();
+    }
+  }
 });
 
 function startObservers(){
-  if(!document.body)return;
   ob.observe(document.body,{childList:true,subtree:true});
-  if(!successOb._started){
-    successOb.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['class','style']});
-    successOb._started=true;
-  }
-  scrollOb.observe(document.body,{attributes:true,attributeFilter:['style','class']});
-  scrollOb.observe(document.documentElement,{attributes:true,attributeFilter:['style','class']});
+  scrollOb.observe(document.body,{attributes:true,attributeFilter:['class','style']});
+  successOb.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['style','class']});
 }
 
 window.addEventListener('resize',function(){
