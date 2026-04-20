@@ -11,10 +11,12 @@ var QR_DISCOUNT=0.03;
 var QR_PROMO='SALE5';
 var FORM_ID='form1888069311';
 var cc={n:'Россия',d:'+7',ml:10,ph:'(999) 999-99-99'};
-var mp=null,ins=false,mi=false,reord=false,agreeChecked=false,_injecting=false,_origPrice=null;
+var mp=null,ins=false,mi=false,reord=false,agreeChecked=false,_injecting=false;
 var _focused=false;
 var userPromoInput='';
-var _lastTildaTotal=null;
+var _basePrice=0;
+var _pollingStarted=false;
+var _watchersStarted=false;
 
 document.addEventListener('focusin',function(e){
   if(e.target&&(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT')){
@@ -121,24 +123,26 @@ var pH='<div class="cst-block payment-block" id="pBlock">'
 function parseSum(str){return parseInt((str||'').replace(/\s/g,'').replace(/[^\d]/g,''))||0;}
 function fmtSum(n){return n.toLocaleString('ru-RU')+' р.';}
 
+/* Читаем ОРИГИНАЛЬНУЮ сумму из Tilda DOM, но отключаем свой observer на время чтения */
+var _reading=false;
 function getTildaRawTotal(){
   var el=document.querySelector('.t706__cartwin-totalamount');
   if(!el)el=document.querySelector('.t706__cartpage-totals-price');
   if(!el)el=document.querySelector('[class*="cartwin-total"]');
   if(!el)return 0;
-  var v=parseSum(el.textContent);
-  return v;
+  return parseSum(el.textContent);
 }
 
-function readCartTotal(){
-  var v=getTildaRawTotal();
-  if(v>0){_lastTildaTotal=v;}
-  return _lastTildaTotal||0;
+/* Захватываем базовую цену — только когда Tilda сама меняет сумму (не мы) */
+function captureBasePrice(){
+  var raw=getTildaRawTotal();
+  if(raw>0)_basePrice=raw;
+  return _basePrice;
 }
 
-/* ПУНКТ 4: обновлённая функция updTotals — моментальное обновление */
+/* updTotals — всегда считает от _basePrice, никогда не накапливает */
 function updTotals(){
-  var base=readCartTotal();
+  var base=_basePrice;
   if(!base)return;
 
   var pa=document.querySelector('.pay-opt.active');
@@ -161,37 +165,44 @@ function updTotals(){
   if(!totalEl)totalEl=document.querySelector('.t706__cartpage-totals-price');
   if(!totalEl)totalEl=document.querySelector('[class*="cartwin-total"]');
   if(totalEl){
+    _reading=true;
     totalEl.textContent=fmtSum(afterQR);
+    _reading=false;
   }
 }
 
-/* ПУНКТ 4: наблюдатель за изменением суммы Tilda (кол-во товаров +/-) */
+/* Наблюдатель — ловим когда TILDA сама меняет сумму (товар +/-, удаление) */
 function watchTildaTotal(){
+  if(_watchersStarted)return;
+  _watchersStarted=true;
   var target=document.querySelector('.t706__cartwin-totalamount');
   if(!target)target=document.querySelector('.t706__cartpage-totals-price');
   if(!target)return;
   var tOb=new MutationObserver(function(){
+    if(_reading)return; /* игнорируем наши собственные записи */
     var raw=parseSum(target.textContent);
-    if(raw>0&&raw!==_lastTildaTotal){
-      _lastTildaTotal=raw;
+    if(raw>0){
+      _basePrice=raw;
       updTotals();
     }
   });
   tOb.observe(target,{childList:true,characterData:true,subtree:true});
 }
 
-/* ПУНКТ 4: усиленное отслеживание кликов на +/- и удаление товара */
+/* Клики по +/- и удалению — перечитываем базу после задержки */
 function watchQuantityBtns(){
   document.addEventListener('click',function(e){
     var btn=e.target.closest('.t706__product-quantity__btn,.t706__cartwin-product-del,[class*="quantity"],[class*="product-del"],[class*="cart-del"]');
     if(!btn)return;
-    /* Серия проверок с разной задержкой для надёжного отлова */
-    var delays=[100,200,350,500,700,1000,1500];
+    /* Временно убираем свою скидку чтобы Tilda записала чистую сумму */
+    var delays=[200,400,700,1000,1500];
     delays.forEach(function(d){
       setTimeout(function(){
+        /* Tilda уже обновила DOM — но там может быть наша скидочная сумма
+           Читаем и если она отличается от текущей basePrice — обновляем */
         var raw=getTildaRawTotal();
-        if(raw>0&&raw!==_lastTildaTotal){
-          _lastTildaTotal=raw;
+        if(raw>0&&raw!==_basePrice){
+          _basePrice=raw;
         }
         updTotals();
       },d);
@@ -199,12 +210,28 @@ function watchQuantityBtns(){
   });
 }
 
-/* ПУНКТ 4: polling — каждые 500мс проверяем не изменилась ли сумма */
+/* Polling — подстраховка. Читаем DOM, но проверяем не наша ли это запись */
 function startTotalPolling(){
+  if(_pollingStarted)return;
+  _pollingStarted=true;
   setInterval(function(){
+    if(_reading)return;
     var raw=getTildaRawTotal();
-    if(raw>0&&raw!==_lastTildaTotal){
-      _lastTildaTotal=raw;
+    /* Если в DOM стоит значение отличное от того что мы записали — значит Tilda обновила */
+    var pa=document.querySelector('.pay-opt.active');
+    var isQR=pa&&pa.getAttribute('data-p')==='qr';
+    var expectedDisplay=isQR?_basePrice-Math.round(_basePrice*QR_DISCOUNT):_basePrice;
+    if(raw>0&&raw!==expectedDisplay&&raw!==_basePrice){
+      /* Неизвестное значение — скорее всего Tilda обновила после +/- */
+      _basePrice=raw;
+      updTotals();
+    }else if(raw>0&&raw!==expectedDisplay&&raw===_basePrice){
+      /* Tilda вернула базу (например QR сняли) — просто обновляем отображение */
+      updTotals();
+    }
+    /* Если _basePrice ещё 0 — захватываем первое значение */
+    if(_basePrice===0&&raw>0){
+      _basePrice=raw;
       updTotals();
     }
   },500);
@@ -245,7 +272,6 @@ function applyPromo(){
   if(code){setPromo(code);}
 }
 
-/* ПУНКТ 3: красная обводка при неверном промо + ПУНКТ 4: моментальное обновление */
 function initPromoField(){
   var btn=document.getElementById('promoApplyBtn');
   var inp=document.getElementById('promoInput');
@@ -256,16 +282,19 @@ function initPromoField(){
   btn.addEventListener('click',function(){
     var code=inp.value.trim().toUpperCase();
     var msg=document.getElementById('promoMsg');
+    var row=document.getElementById('promoInputRow');
     inp.classList.remove('promo-err');
+    if(msg){msg.textContent='';msg.className='promo-msg';}
+    /* Убеждаемся что поле видимо */
+    if(row)row.style.display='';
+
     if(!code){
       userPromoInput='';
-      if(msg){msg.textContent='';msg.className='promo-msg';}
       updTotals();
       return;
     }
     if(validCodes.indexOf(code)!==-1){
       userPromoInput=code;
-      inp.classList.remove('promo-err');
       if(msg){msg.textContent='✓ Промокод '+code+' принят!';msg.className='promo-msg success';}
     }else{
       userPromoInput='';
@@ -449,7 +478,7 @@ function clearErr(){
   var ph=document.getElementById('r_phone');
   var pw=document.getElementById('phoneWrap');
   if(ph&&pw)ph.addEventListener('input',function(){pw.classList.remove('cst-err');hideValErr();});
-  ['i_str','i_hou','i_pvz','i_tkc'].forEach(function(id){
+    ['i_str','i_hou','i_pvz','i_tkc'].forEach(function(id){
     var el=document.getElementById(id);
     if(el)el.addEventListener('input',function(){this.classList.remove('cst-err');hideValErr();});
   });
@@ -528,7 +557,7 @@ function getDD(){
   var ty=ac.getAttribute('data-d');
   var pa=document.querySelector('.pay-opt.active');
   var pt='',disc=false,discAmt=0,origSum=0,finalSum=0;
-  var base=readCartTotal();
+  var base=_basePrice;
   if(pa){
     var pv=pa.getAttribute('data-p');
     if(pv==='card'){pt='Картой';}
@@ -538,7 +567,7 @@ function getDD(){
   var nmEl=document.getElementById('r_name');
   var emEl=document.getElementById('r_email');
   var phEl=document.getElementById('r_phone');
-    if(!nmEl||!emEl||!phEl)return null;
+  if(!nmEl||!emEl||!phEl)return null;
   var nm=nmEl.value.trim();
   var em=emEl.value.trim();
   var ph=cc.d+phEl.value.replace(/\D/g,'');
@@ -616,7 +645,7 @@ function unlockScroll(){
 }
 
 function showSuccess(){
-  _origPrice=null;_lastTildaTotal=null;ins=false;reord=false;
+  _basePrice=0;ins=false;reord=false;
   var cartWin=document.querySelector('.t706__cartwin');
   if(cartWin){cartWin.style.display='none';cartWin.style.pointerEvents='none';}
   var overlay=document.querySelector('.t706__overlay');
@@ -680,20 +709,11 @@ function bindAll(){
   var s=document.getElementById('selTK');
   if(s)s.addEventListener('change',function(){
     var sb=document.getElementById('tk-sub');
-    if(sb&&this.value)sb.classList.add('visible');
-  });
-  document.querySelectorAll('.dlv-sub-o').forEach(function(o){
-    o.addEventListener('click',function(){
-      document.querySelectorAll('.dlv-sub-o').forEach(function(x){x.classList.remove('active');});
-      this.classList.add('active');
-      var t=this.getAttribute('data-ts');
-      var pvz=document.getElementById('tk-pvz');
-      var tca=document.getElementById('tk-ca');
+    if(sb&&this');
       if(pvz)pvz.classList.toggle('visible',t==='pvz');
       if(tca)tca.classList.toggle('visible',t==='tkc');
     });
   });
-  /* ПУНКТ 4: при клике на способ оплаты — моментальное обновление */
   document.querySelectorAll('.pay-opt').forEach(function(o){
     o.addEventListener('click',function(){
       if(this.classList.contains('pay-disabled'))return;
@@ -706,9 +726,11 @@ function bindAll(){
   initDD('i_tkc','dd-tkc');
   updPay();
   initPromoField();
+  /* Захватываем базовую цену при первой инициализации */
+  captureBasePrice();
   watchTildaTotal();
   watchQuantityBtns();
-  startTotalPolling(); /* ПУНКТ 4: запуск polling */
+  startTotalPolling();
 }
 
 function initDD(iid,sid){
@@ -779,7 +801,7 @@ function tryIns(){
   var hasP=document.getElementById('pBlock');
   if(ins&&hasR&&hasD&&hasP)return;
   if(!hasR||!hasD||!hasP){
-    _origPrice=null;_lastTildaTotal=null;
+    _basePrice=0;
     ins=false;
     reord=false;
   }
