@@ -7,7 +7,8 @@ document.head.appendChild(leafletJs);
 function init(){
 var DT='c9aa817ed1d374c93a7983bf2bb583b694319c1c';
 var SK='cst_checkout_data';
-var QR_DISCOUNT=0.03;
+var PROMO_DISCOUNTS={'OZON':5,'LS78':5,'WB':5}; // % скидки промокодов — поправь под себя
+var QR_EXTRA_PERCENT=3;                          // % скидки за оплату QR
 var FORM_ID='form1888069311';
 var cc={n:'Россия',d:'+7',ml:10,ph:'(999) 999-99-99'};
 var mp=null,ins=false,mi=false,reord=false,agreeChecked=false,_injecting=false;
@@ -139,7 +140,7 @@ function readProdAmount(){
 function calcCartBase(){
   var sum=readProdAmount();
   if(sum>0)return sum;
-  
+
   /* fallback: считаем по товарам */
   sum=0;
   var items=document.querySelectorAll('.t706__cartwin-product, .t706__cartpage-product');
@@ -168,12 +169,22 @@ function calcCartBase(){
 function calcFinal(base){
   var pa=document.querySelector('.pay-opt.active');
   var isQR=pa&&pa.getAttribute('data-p')==='qr';
-  var qrDisc=isQR?Math.round(base*QR_DISCOUNT):0;
+  var code=(userPromoInput||'').toUpperCase().trim();
+  var promoPercent=(promoApplied&&PROMO_DISCOUNTS[code])?PROMO_DISCOUNTS[code]:0;
+  var qrPercent=isQR?QR_EXTRA_PERCENT:0;
+  var totalPercent=promoPercent+qrPercent;
+  var discount=Math.round(base*totalPercent/100);
   return{
     base:base,
-    qrDisc:qrDisc,
-    total:base-qrDisc,
-    isQR:isQR
+    promoPercent:promoPercent,
+    qrPercent:qrPercent,
+    totalPercent:totalPercent,
+    discount:discount,
+    qrDisc:Math.round(base*qrPercent/100),
+    promoDisc:Math.round(base*promoPercent/100),
+    total:base-discount,
+    isQR:isQR,
+    promoCode:promoApplied?code:''
   };
 }
 
@@ -185,8 +196,11 @@ function updDisplay(){
 
   var info=document.getElementById('discountInfo');
   if(info){
-    if(calc.qrDisc>0){
-      info.textContent='Скидка QR: -'+fmtSum(calc.qrDisc);
+    if(calc.discount>0){
+      var parts=[];
+      if(calc.promoPercent>0)parts.push('промокод '+calc.promoCode+' '+calc.promoPercent+'%');
+      if(calc.qrPercent>0)parts.push('QR '+calc.qrPercent+'%');
+      info.innerHTML='Скидка ('+parts.join(' + ')+'): −'+fmtSum(calc.discount);
       info.classList.add('visible');
     }else{
       info.textContent='';
@@ -263,61 +277,36 @@ function watchQuantityBtns(){
 }
 
 /* ===== ПРОМОКОД ===== */
-function setPromo(code){
-  var cart=document.querySelector('.t706__cartwin');
-  if(!cart)return;
-  var inp=cart.querySelector('.t-inputpromocode');
-  if(!inp)return;
-  var nativeSetter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;
-  nativeSetter.call(inp,code);
-  inp.dispatchEvent(new Event('input',{bubbles:true}));
-  inp.dispatchEvent(new Event('change',{bubbles:true}));
-  var activateBtn=cart.querySelector('.t-inputpromocode__btn');
-  if(activateBtn){
-    setTimeout(function(){
-      activateBtn.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));
-    },100);
-  }
-}
-
-function resolvePromoCode(){
-  var pa=document.querySelector('.pay-opt.active');
-  var isQR=pa&&pa.getAttribute('data-p')==='qr';
-  var code=userPromoInput.toUpperCase().trim();
-  var validCodes=['OZON','LS78','WB'];
-  var isValid=validCodes.indexOf(code)!==-1;
-  if(isValid&&isQR) return code+'QR';
-  if(isValid&&!isQR) return code;
-  if(!isValid&&isQR) return 'SALE5';
-  return '';
-}
-
-function applyPromo(){
-  var code=resolvePromoCode();
-  if(code){setPromo(code);}
-}
-
 function cancelPromo(){
   userPromoInput='';
   promoApplied=false;
   var inp=document.getElementById('promoInput');
   var btn=document.getElementById('promoApplyBtn');
   var msg=document.getElementById('promoMsg');
+  var row=document.getElementById('promoInputRow');
   if(inp){inp.value='';inp.disabled=false;inp.classList.remove('promo-err','promo-ok');}
   if(btn){btn.textContent='Применить';btn.classList.remove('promo-cancel-btn');}
   if(msg){msg.textContent='';msg.className='promo-msg';}
+  if(row){row.style.display='flex';row.style.visibility='visible';}
+  _lastDisplayed=0;
   updDisplay();
+  saveState();
 }
 
 function initPromoField(){
   var btn=document.getElementById('promoApplyBtn');
   var inp=document.getElementById('promoInput');
+  var row=document.getElementById('promoInputRow');
   if(!btn||!inp)return;
 
-  var validCodes=['OZON','LS78','WB'];
+  /* Гарантируем что поле всегда видно */
+  if(row){row.style.display='flex';row.style.visibility='visible';}
+  inp.style.display='';
+  inp.style.visibility='visible';
 
-  btn.addEventListener('click',function(){
-    /* Если промо уже применён — отменяем */
+  btn.addEventListener('click',function(e){
+    e.preventDefault();
+
     if(promoApplied){
       cancelPromo();
       return;
@@ -329,26 +318,35 @@ function initPromoField(){
     if(msg){msg.textContent='';msg.className='promo-msg';}
 
     if(!code){
-      userPromoInput='';
-      updDisplay();
+      inp.classList.add('promo-err');
+      if(msg){msg.textContent='Введите промокод';msg.className='promo-msg error';}
       return;
     }
 
-    if(validCodes.indexOf(code)!==-1){
+    if(PROMO_DISCOUNTS.hasOwnProperty(code)){
       userPromoInput=code;
       promoApplied=true;
       inp.disabled=true;
       inp.classList.add('promo-ok');
       btn.textContent='Отменить';
       btn.classList.add('promo-cancel-btn');
-      if(msg){msg.textContent='✓ Промокод '+code+' принят!';msg.className='promo-msg success';}
+      if(msg){msg.textContent='✓ Промокод '+code+' принят (-'+PROMO_DISCOUNTS[code]+'%)';msg.className='promo-msg success';}
+      _lastDisplayed=0;
+      updDisplay();
+      saveState();
     }else{
+      /* НЕ скрываем поле, только красная подсветка */
       userPromoInput='';
       promoApplied=false;
       inp.classList.add('promo-err');
+      inp.disabled=false;
+      btn.textContent='Применить';
+      btn.classList.remove('promo-cancel-btn');
       if(msg){msg.textContent='Промокод не найден';msg.className='promo-msg error';}
+      if(row){row.style.display='flex';row.style.visibility='visible';}
+      _lastDisplayed=0;
+      updDisplay();
     }
-    updDisplay();
   });
 
   inp.addEventListener('input',function(){
@@ -416,7 +414,7 @@ function initPhone(){
   var inp=document.getElementById('r_phone');
   if(!inp)return;
   inp.addEventListener('input',function(){
-    var raw=this.value.replace(/\D/g,'').substring(0,cc.ml);
+        var raw=this.value.replace(/\D/g,'').substring(0,cc.ml);
     this.value=fmtPh(raw,cc.ph);
   });
   inp.addEventListener('keydown',function(e){
@@ -539,7 +537,7 @@ function saveState(){
   data.nm=(document.getElementById('r_name')||{}).value||'';
   data.em=(document.getElementById('r_email')||{}).value||'';
   data.ph=(document.getElementById('r_phone')||{}).value||'';
-    data.cc=cc.d;
+  data.cc=cc.d;
   data.ag=agreeChecked;
   var ad=document.querySelector('.dlv-opt.active');
   if(ad)data.dlv=ad.getAttribute('data-d');
@@ -610,10 +608,44 @@ function loadState(){
         var pbtn=document.getElementById('promoApplyBtn');
         if(pbtn){pbtn.textContent='Отменить';pbtn.classList.add('promo-cancel-btn');}
         var pmsg=document.getElementById('promoMsg');
-        if(pmsg){pmsg.textContent='✓ Промокод '+d.promo+' принят!';pmsg.className='promo-msg success';}
+        if(pmsg){pmsg.textContent='✓ Промокод '+d.promo+' принят (-'+PROMO_DISCOUNTS[d.promo]+'%)';pmsg.className='promo-msg success';}
       }
     }
   }catch(e){}
+}
+
+/* ===== ПРОМОКОД для Тильды ===== */
+function setPromo(code){
+  var cart=document.querySelector('.t706__cartwin');
+  if(!cart)return;
+  var inp=cart.querySelector('.t-inputpromocode');
+  if(!inp)return;
+  var nativeSetter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;
+  nativeSetter.call(inp,code);
+  inp.dispatchEvent(new Event('input',{bubbles:true}));
+  inp.dispatchEvent(new Event('change',{bubbles:true}));
+  var activateBtn=cart.querySelector('.t-inputpromocode__btn');
+  if(activateBtn){
+    setTimeout(function(){
+      activateBtn.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));
+    },100);
+  }
+}
+
+function resolvePromoCode(){
+  var pa=document.querySelector('.pay-opt.active');
+  var isQR=pa&&pa.getAttribute('data-p')==='qr';
+  var code=userPromoInput.toUpperCase().trim();
+  var isValid=PROMO_DISCOUNTS.hasOwnProperty(code);
+  if(isValid&&isQR) return code+'QR';
+  if(isValid&&!isQR) return code;
+  if(!isValid&&isQR) return 'SALE5';
+  return '';
+}
+
+function applyPromo(){
+  var code=resolvePromoCode();
+  if(code){setPromo(code);}
 }
 
 /* ===== DADATA ===== */
@@ -730,6 +762,7 @@ function updPayAvail(){
       cash.querySelector('.pay-dot').classList.remove('active');
       var cardOpt=document.querySelector('.pay-opt[data-p="card"]');
       if(cardOpt){cardOpt.classList.add('active');cardOpt.querySelector('.pay-dot').classList.add('active');}
+      _lastDisplayed=0;
       updDisplay();
     }
   }else{
@@ -838,7 +871,7 @@ function inject(){
     var payType=payOpt?payOpt.getAttribute('data-p'):'';
     var payStr='';
     if(payType==='card')payStr='Банковская карта';
-    if(payType==='qr')payStr='QR-код (скидка 3%)';
+    if(payType==='qr')payStr='QR-код (скидка '+QR_EXTRA_PERCENT+'%)';
     if(payType==='cash')payStr='Наличные при получении';
 
     /* Промокод */
@@ -864,8 +897,11 @@ function inject(){
 
     /* Комментарий с полной инфой */
     var comment='Доставка: '+dlvStr+'\nОплата: '+payStr;
-    if(promoCode)comment+='\nПромокод: '+promoCode;
+    if(calc.promoCode)comment+='\nПромокод: '+calc.promoCode+' (-'+calc.promoPercent+'%)';
     if(calc.qrDisc>0)comment+='\nСкидка QR: -'+fmtSum(calc.qrDisc);
+    if(calc.promoDisc>0)comment+='\nСкидка промо: -'+fmtSum(calc.promoDisc);
+    comment+='\nСумма товаров: '+fmtSum(calc.base);
+    comment+='\nСкидка: -'+fmtSum(calc.discount);
     comment+='\nИтого: '+fmtSum(calc.total);
 
     var tArea=tildaForm.querySelector('textarea[name="Input"]');
