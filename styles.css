@@ -253,24 +253,29 @@
 }
 
 /* ===== ПРОМОКОД ===== */
-.promo-section-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #fff;
-  margin: 30px 0 12px;
+.promo-wrap {
+  margin: 20px 0 0;
 }
 
-.promo-wrap {
+.promo-label {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 10px;
+}
+
+.promo-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
 }
 
-.promo-wrap input {
+.promo-row input {
   flex: 1;
-  padding: 14px 16px;
-  border: 1px solid rgba(255,255,255,0.2);
+  padding: 13px 16px;
+  border: 1px solid rgba(255,255,255,0.18);
   border-radius: 8px;
   font-size: 15px;
   outline: none;
@@ -280,19 +285,19 @@
   min-width: 0;
 }
 
-.promo-wrap input::placeholder {
-  color: rgba(255,255,255,0.35);
+.promo-row input::placeholder {
+  color: rgba(255,255,255,0.3);
 }
 
-.promo-wrap input:focus {
-  border-color: #e8732a;
+.promo-row input:focus {
+  border-color: rgba(255,255,255,0.4);
 }
 
-.promo-wrap button {
-  padding: 14px 24px;
+.promo-apply-btn {
+  padding: 13px 22px;
   background: transparent;
-  color: #fff;
-  border: 1px solid rgba(255,255,255,0.3);
+  color: rgba(255,255,255,0.7);
+  border: 1px solid rgba(255,255,255,0.18);
   border-radius: 8px;
   font-size: 15px;
   cursor: pointer;
@@ -301,46 +306,25 @@
   transition: all .2s;
 }
 
-.promo-wrap button:hover {
-  border-color: #e8732a;
-  color: #e8732a;
+.promo-apply-btn:hover {
+  border-color: rgba(255,255,255,0.4);
+  color: #fff;
 }
 
-/* Сообщение об успехе */
 .promo-msg {
-  font-size: 14px;
-  margin-top: 10px;
-  padding: 10px 14px;
-  border-radius: 8px;
+  font-size: 13px;
+  margin-top: 8px;
+  padding: 0;
+}
+
+.promo-msg:empty {
+  display: none;
 }
 
 .promo-msg.success {
-  background: rgba(39, 174, 96, 0.15);
-  border: 1px solid rgba(39, 174, 96, 0.4);
   color: #4cd964;
 }
 
 .promo-msg.error {
   color: #e74c3c;
-  background: none;
-  border: none;
-  padding: 4px 0;
-}
-
-/* Блок скидок перед итоговой суммой */
-.discount-details {
-  text-align: center;
-  color: rgba(255,255,255,0.7);
-  font-size: 14px;
-  line-height: 1.8;
-  margin: 16px 0 8px;
-}
-
-.discount-details span {
-  display: block;
-}
-
-.discount-details .discount-total {
-  color: #fff;
-  font-weight: 600;
 }
