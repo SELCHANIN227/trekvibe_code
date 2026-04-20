@@ -13,13 +13,13 @@ var cc={n:'Россия',d:'+7',ml:10,ph:'(999) 999-99-99'};
 var mp=null,ins=false,mi=false,reord=false,agreeChecked=false,_injecting=false;
 var _focused=false;
 var userPromoInput='';
+var promoApplied=false;
 var _pollingStarted=false;
 var _watchersStarted=false;
 
-/* ===== ЯДРО: единый источник правды для суммы ===== */
-var _cartBase=0;       /* чистая сумма товаров из Tilda (без наших модификаций) */
-var _lastDisplayed=0;  /* что мы последний раз записали в DOM */
-var _writing=false;    /* флаг: мы сейчас пишем в DOM */
+var _cartBase=0;
+var _lastDisplayed=0;
+var _writing=false;
 
 document.addEventListener('focusin',function(e){
   if(e.target&&(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT')){
@@ -127,10 +127,21 @@ var pH='<div class="cst-block payment-block" id="pBlock">'
 function parseSum(str){return parseInt((str||'').replace(/\s/g,'').replace(/[^\d]/g,''))||0;}
 function fmtSum(n){return n.toLocaleString('ru-RU')+' р.';}
 
-/* ===== ЧТЕНИЕ СУММЫ ТОВАРОВ ИЗ TILDA ===== */
-/* Считываем сумму каждого товара в корзине и складываем — это надёжнее чем читать total */
+/* ===== ЧТЕНИЕ СУММЫ ИЗ ГРАФЫ "Сумма:" ===== */
+function readProdAmount(){
+  var el=document.querySelector('.t706__cartwin-prodamount-price');
+  if(el){
+    return parseSum(el.textContent);
+  }
+  return 0;
+}
+
 function calcCartBase(){
-  var sum=0;
+  var sum=readProdAmount();
+  if(sum>0)return sum;
+  
+  /* fallback: считаем по товарам */
+  sum=0;
   var items=document.querySelectorAll('.t706__cartwin-product, .t706__cartpage-product');
   if(items.length>0){
     items.forEach(function(item){
@@ -140,15 +151,11 @@ function calcCartBase(){
       }
     });
   }
-  /* Если не удалось посчитать по товарам — fallback на total */
   if(sum===0){
-    var el=document.querySelector('.t706__cartwin-totalamount');
-    if(!el)el=document.querySelector('.t706__cartpage-totals-price');
-    if(!el)el=document.querySelector('[class*="cartwin-total"]');
-    if(el){
-      var raw=parseSum(el.textContent);
-      /* Проверяем: если raw совпадает с тем что мы записали — значит это наша модификация */
-      /* Тогда используем сохранённый _cartBase */
+    var el2=document.querySelector('.t706__cartwin-totalamount');
+    if(!el2)el2=document.querySelector('.t706__cartpage-totals-price');
+    if(el2){
+      var raw=parseSum(el2.textContent);
       if(raw===_lastDisplayed&&_cartBase>0){
         return _cartBase;
       }
@@ -158,10 +165,6 @@ function calcCartBase(){
   return sum;
 }
 
-/* ===== ЕДИНАЯ ФОРМУЛА ИТОГА ===== */
-/* base = сумма товаров */
-/* - QR скидка (если выбран QR) */
-/* Промокод НЕ влияет на отображаемую сумму — он применяется в Tilda при отправке */
 function calcFinal(base){
   var pa=document.querySelector('.pay-opt.active');
   var isQR=pa&&pa.getAttribute('data-p')==='qr';
@@ -174,15 +177,12 @@ function calcFinal(base){
   };
 }
 
-/* ===== ОБНОВЛЕНИЕ ОТОБРАЖЕНИЯ ===== */
-/* Вызывается когда что-то изменилось. Пишет в DOM только если итог реально другой */
 function updDisplay(){
   var base=_cartBase;
   if(!base||base<=0)return;
 
   var calc=calcFinal(base);
 
-  /* Блок скидки */
   var info=document.getElementById('discountInfo');
   if(info){
     if(calc.qrDisc>0){
@@ -194,12 +194,10 @@ function updDisplay(){
     }
   }
 
-  /* Записываем итог в DOM только если он изменился */
   if(calc.total===_lastDisplayed)return;
 
   var totalEl=document.querySelector('.t706__cartwin-totalamount');
   if(!totalEl)totalEl=document.querySelector('.t706__cartpage-totals-price');
-  if(!totalEl)totalEl=document.querySelector('[class*="cartwin-total"]');
   if(totalEl){
     _writing=true;
     totalEl.textContent=fmtSum(calc.total);
@@ -208,27 +206,22 @@ function updDisplay(){
   }
 }
 
-/* ===== ГЛАВНЫЙ ТИКЕР: проверяет всё каждые 300мс ===== */
 function startMainTicker(){
   if(_pollingStarted)return;
   _pollingStarted=true;
 
   setInterval(function(){
     var newBase=calcCartBase();
-
-    /* Если база изменилась (товар добавлен/удалён/кол-во) — обновляем */
     if(newBase>0&&newBase!==_cartBase){
       _cartBase=newBase;
+      _lastDisplayed=0;
     }
-
-    /* Пересчитываем и обновляем отображение */
     if(_cartBase>0){
       updDisplay();
     }
-  },300);
+  },200);
 }
 
-/* ===== MutationObserver — ловим когда Tilda меняет DOM корзины ===== */
 function watchCartDOM(){
   if(_watchersStarted)return;
   _watchersStarted=true;
@@ -239,11 +232,11 @@ function watchCartDOM(){
 
   var cartOb=new MutationObserver(function(){
     if(_writing)return;
-    /* Tilda что-то изменила — пересчитываем базу */
     setTimeout(function(){
       var newBase=calcCartBase();
       if(newBase>0&&newBase!==_cartBase){
         _cartBase=newBase;
+        _lastDisplayed=0;
         updDisplay();
       }
     },50);
@@ -252,17 +245,16 @@ function watchCartDOM(){
   cartOb.observe(target,{childList:true,subtree:true,characterData:true});
 }
 
-/* ===== Клики по +/- и удалению ===== */
 function watchQuantityBtns(){
   document.addEventListener('click',function(e){
     var btn=e.target.closest('.t706__product-quantity__btn,.t706__cartwin-product-del,[class*="quantity"],[class*="product-del"],[class*="cart-del"]');
     if(!btn)return;
-    /* Серия проверок с задержкой — Tilda обновляет DOM асинхронно */
-    [100,250,500,800,1200].forEach(function(d){
+    [100,200,350,500,800,1200].forEach(function(d){
       setTimeout(function(){
         var newBase=calcCartBase();
         if(newBase>0){
           _cartBase=newBase;
+          _lastDisplayed=0;
           updDisplay();
         }
       },d);
@@ -305,6 +297,18 @@ function applyPromo(){
   if(code){setPromo(code);}
 }
 
+function cancelPromo(){
+  userPromoInput='';
+  promoApplied=false;
+  var inp=document.getElementById('promoInput');
+  var btn=document.getElementById('promoApplyBtn');
+  var msg=document.getElementById('promoMsg');
+  if(inp){inp.value='';inp.disabled=false;inp.classList.remove('promo-err','promo-ok');}
+  if(btn){btn.textContent='Применить';btn.classList.remove('promo-cancel-btn');}
+  if(msg){msg.textContent='';msg.className='promo-msg';}
+  updDisplay();
+}
+
 function initPromoField(){
   var btn=document.getElementById('promoApplyBtn');
   var inp=document.getElementById('promoInput');
@@ -313,9 +317,15 @@ function initPromoField(){
   var validCodes=['OZON','LS78','WB'];
 
   btn.addEventListener('click',function(){
+    /* Если промо уже применён — отменяем */
+    if(promoApplied){
+      cancelPromo();
+      return;
+    }
+
     var code=inp.value.trim().toUpperCase();
     var msg=document.getElementById('promoMsg');
-    inp.classList.remove('promo-err');
+    inp.classList.remove('promo-err','promo-ok');
     if(msg){msg.textContent='';msg.className='promo-msg';}
 
     if(!code){
@@ -323,11 +333,18 @@ function initPromoField(){
       updDisplay();
       return;
     }
+
     if(validCodes.indexOf(code)!==-1){
       userPromoInput=code;
+      promoApplied=true;
+      inp.disabled=true;
+      inp.classList.add('promo-ok');
+      btn.textContent='Отменить';
+      btn.classList.add('promo-cancel-btn');
       if(msg){msg.textContent='✓ Промокод '+code+' принят!';msg.className='promo-msg success';}
     }else{
       userPromoInput='';
+      promoApplied=false;
       inp.classList.add('promo-err');
       if(msg){msg.textContent='Промокод не найден';msg.className='promo-msg error';}
     }
@@ -335,7 +352,7 @@ function initPromoField(){
   });
 
   inp.addEventListener('input',function(){
-    this.classList.remove('promo-err');
+    this.classList.remove('promo-err','promo-ok');
     var msg=document.getElementById('promoMsg');
     if(msg&&msg.classList.contains('error')){msg.textContent='';msg.className='promo-msg';}
   });
@@ -522,587 +539,420 @@ function saveState(){
   data.nm=(document.getElementById('r_name')||{}).value||'';
   data.em=(document.getElementById('r_email')||{}).value||'';
   data.ph=(document.getElementById('r_phone')||{}).value||'';
-  data.ci=countries.indexOf(cc);
-  var da=document.querySelector('.dlv-opt.active');data.dl=da?da.getAttribute('data-d'):'';
-  data.tk=(document.getElementById('selTK')||{}).value||'';
-  var sa=document.querySelector('.dlv-sub-o.active');data.ts=sa?sa.getAttribute('data-ts'):'pvz';
-  data.pv=(document.getElementById('i_pvz')||{}).value||'';
-  data.tc=(document.getElementById('i_tkc')||{}).value||'';
-  data.st=(document.getElementById('i_str')||{}).value||'';
-  data.ho=(document.getElementById('i_hou')||{}).value||'';
-  data.ap=(document.getElementById('i_apt')||{}).value||'';
-  data.fl=(document.getElementById('i_fl')||{}).value||'';
-  data.dm=(document.getElementById('i_dom')||{}).value||'';
-  data.cm=(document.getElementById('i_cmt')||{}).value||'';
-  var pa=document.querySelector('.pay-opt.active');data.py=pa?pa.getAttribute('data-p'):'';
+    data.cc=cc.d;
   data.ag=agreeChecked;
-  data.pr=userPromoInput;
-  try{localStorage.setItem(SK,JSON.stringify(data));}catch(e){}
+  var ad=document.querySelector('.dlv-opt.active');
+  if(ad)data.dlv=ad.getAttribute('data-d');
+  var ap=document.querySelector('.pay-opt.active');
+  if(ap)data.pay=ap.getAttribute('data-p');
+  var tk=document.getElementById('selTK');
+  if(tk)data.tk=tk.value;
+  var so=document.querySelector('.dlv-sub-o.active');
+  if(so)data.ts=so.getAttribute('data-ts');
+  data.pvz=(document.getElementById('i_pvz')||{}).value||'';
+  data.tkc=(document.getElementById('i_tkc')||{}).value||'';
+  data.str=(document.getElementById('i_str')||{}).value||'';
+  data.hou=(document.getElementById('i_hou')||{}).value||'';
+  data.apt=(document.getElementById('i_apt')||{}).value||'';
+  data.fl=(document.getElementById('i_fl')||{}).value||'';
+  data.dom=(document.getElementById('i_dom')||{}).value||'';
+  data.cmt=(document.getElementById('i_cmt')||{}).value||'';
+  data.promo=userPromoInput;
+  data.promoApplied=promoApplied;
+  try{sessionStorage.setItem(SK,JSON.stringify(data));}catch(e){}
 }
 
-function restoreState(){
-  var raw;
-  try{raw=localStorage.getItem(SK);}catch(e){return;}
-  if(!raw)return;
-  var d;
-  try{d=JSON.parse(raw);}catch(e){return;}
-  var nm=document.getElementById('r_name');if(nm&&d.nm)nm.value=d.nm;
-  var em=document.getElementById('r_email');if(em&&d.em)em.value=d.em;
-  if(typeof d.ci==='number'&&d.ci>=0&&d.ci<countries.length)selCo(countries[d.ci]);
-  var ph=document.getElementById('r_phone');if(ph&&d.ph)ph.value=d.ph;
-  if(d.dl){var de=document.querySelector('.dlv-opt[data-d="'+d.dl+'"]');if(de)selDlv(de);}
-  if(d.tk){var sl=document.getElementById('selTK');if(sl){sl.value=d.tk;sl.dispatchEvent(new Event('change'));}}
-  if(d.ts){var se=document.querySelector('.dlv-sub-o[data-ts="'+d.ts+'"]');if(se)se.click();}
-  var flds={i_pvz:'pv',i_tkc:'tc',i_str:'st',i_hou:'ho',i_apt:'ap',i_fl:'fl',i_dom:'dm',i_cmt:'cm'};
-  Object.keys(flds).forEach(function(id){
-    var el=document.getElementById(id);
-    if(el&&d[flds[id]])el.value=d[flds[id]];
-  });
-  if(d.py){
-    var pe=document.querySelector('.pay-opt[data-p="'+d.py+'"]');
-    if(pe&&!pe.classList.contains('pay-disabled')){
-      document.querySelectorAll('.pay-opt').forEach(function(x){x.classList.remove('active');});
-      pe.classList.add('active');
+function loadState(){
+  try{
+    var d=JSON.parse(sessionStorage.getItem(SK));
+    if(!d)return;
+    var nm=document.getElementById('r_name');if(nm&&d.nm)nm.value=d.nm;
+    var em=document.getElementById('r_email');if(em&&d.em)em.value=d.em;
+    if(d.cc){
+      for(var i=0;i<countries.length;i++){
+        if(countries[i].d===d.cc){selCo(countries[i]);break;}
+      }
     }
-  }
-  if(d.ag){
-    agreeChecked=true;
-    var ab=document.getElementById('agreeBox');
-    if(ab)ab.classList.add('checked');
-  }
-  if(d.pr){
-    userPromoInput=d.pr;
-    var pi=document.getElementById('promoInput');
-    if(pi)pi.value=d.pr;
-    var msg=document.getElementById('promoMsg');
-    if(msg){msg.textContent='✓ Промокод '+d.pr+' принят!';msg.className='promo-msg success';}
-  }
-  updDisplay();
-}
-
-function bindSave(){
-  ['r_name','r_email','r_phone','i_pvz','i_tkc','i_str','i_hou','i_apt','i_fl','i_dom','i_cmt'].forEach(function(id){
-    var el=document.getElementById(id);
-    if(el)el.addEventListener('input',saveState);
-  });
-  var sl=document.getElementById('selTK');
-  if(sl)sl.addEventListener('change',saveState);
-  document.querySelectorAll('.dlv-opt,.dlv-sub-o,.pay-opt').forEach(function(o){
-    o.addEventListener('click',function(){
-      saveState();
-      /* При смене способа оплаты — пересчитать итог */
-      setTimeout(updDisplay,50);
-    });
-  });
-}
-
-function getDD(){
-  var ac=document.querySelector('.dlv-opt.active');
-  if(!ac)return null;
-  var ty=ac.getAttribute('data-d');
-  var pa=document.querySelector('.pay-opt.active');
-  var calc=calcFinal(_cartBase);
-  var pt='',disc=false,discAmt=0,origSum=0,finalSum=0;
-  if(pa){
-    var pv=pa.getAttribute('data-p');
-    if(pv==='card'){pt='Картой';}
-    else if(pv==='qr'){pt='QR-код';disc=true;origSum=calc.base;discAmt=calc.qrDisc;finalSum=calc.total;}
-    else if(pv==='cash'){pt='Наличными';}
-  }
-  if(!disc){finalSum=calc.total;origSum=calc.base;}
-  var nmEl=document.getElementById('r_name');
-  var emEl=document.getElementById('r_email');
-  var phEl=document.getElementById('r_phone');
-  if(!nmEl||!emEl||!phEl)return null;
-  var nm=nmEl.value.trim();
-  var em=emEl.value.trim();
-  var ph=cc.d+phEl.value.replace(/\D/g,'');
-  if(ty==='tk'){
-    var sl=document.getElementById('selTK');
-    var sa=document.querySelector('.dlv-sub-o.active');
-    var st=sa?sa.getAttribute('data-ts'):'pvz';
-    var ad='';
-    if(st==='pvz'){var pvzEl=document.getElementById('i_pvz');ad=pvzEl?pvzEl.value:'';}
-    else{var tkcEl=document.getElementById('i_tkc');ad=tkcEl?tkcEl.value:'';}
-    var cn='';
-    if(sl&&sl.selectedIndex>=0&&sl.options[sl.selectedIndex])cn=sl.options[sl.selectedIndex].text;
-    return{ty:ty,m:'ТК',cn:cn,sm:st==='pvz'?'ПВЗ':'Курьер ТК',a:ad,p:pt,disc:disc,discAmt:discAmt,finalSum:finalSum,origSum:origSum,nm:nm,em:em,ph:ph};
-  }
-  if(ty==='pickup'){
-    return{ty:ty,m:'Самовывоз',cn:'',sm:'',a:'Санкт-Петербург, Полярников 9',p:pt,disc:disc,discAmt:discAmt,finalSum:finalSum,origSum:origSum,nm:nm,em:em,ph:ph};
-  }
-  if(ty==='courier'){
-    var strEl=document.getElementById('i_str');
-    var houEl=document.getElementById('i_hou');
-    var aptEl=document.getElementById('i_apt');
-    var flEl=document.getElementById('i_fl');
-    var domEl=document.getElementById('i_dom');
-    var cmtEl=document.getElementById('i_cmt');
-    var str=strEl?strEl.value:'';
-    var hou=houEl?houEl.value:'';
-    var apt=aptEl?aptEl.value:'';
-    var fl=flEl?flEl.value:'';
-    var dom=domEl?domEl.value:'';
-    var cmt=cmtEl?cmtEl.value:'';
-    var addr='СПб, '+str+', д.'+hou;
-    if(apt)addr+=', кв.'+apt;
-    if(fl)addr+=', эт.'+fl;
-    if(dom)addr+=', домофон: '+dom;
-    if(cmt)addr+='. Комментарий: '+cmt;
-    return{ty:ty,m:'Курьер СПб',cn:'',sm:'',a:addr,p:pt,disc:disc,discAmt:discAmt,finalSum:finalSum,origSum:origSum,nm:nm,em:em,ph:ph};
-  }
-  return null;
-}
-
-function fillTildaForm(d){
-  var form=document.getElementById(FORM_ID);
-  if(!form)return false;
-  var fName=form.querySelector('input[name="name"]');if(fName)fName.value=d.nm;
-  var fEmail=form.querySelector('input[name="email"]');if(fEmail)fEmail.value=d.em;
-  var fPhone=form.querySelector('input[name="phone"]');if(fPhone)fPhone.value=d.ph;
-  var dlvText=d.m;
-  if(d.cn)dlvText+=' - '+d.cn;
-  if(d.sm)dlvText+=' ('+d.sm+')';
-  var fDlv=form.querySelector('input[name="delivery"]');if(fDlv)fDlv.value=dlvText;
-  var fAddr=form.querySelector('input[name="address"]');if(fAddr)fAddr.value=d.a||'';
-  var fComm=form.querySelector('input[name="comment"]');
-  if(fComm){var commText='Оплата: '+d.p;if(d.disc)commText+=' | Скидка: '+d.discAmt+' руб. | Итого: '+d.finalSum+' руб.';fComm.value=commText;}
-  var payText='Оплата: '+d.p;
-  if(d.disc)payText+=' | Скидка: '+d.discAmt+' руб. | Итого: '+d.finalSum+' руб.';
-  var fSpec=form.querySelector('[name="form-spec-comments"]');
-  if(fSpec)fSpec.value=d.nm+' | '+d.ph+' | '+d.em+' | '+dlvText+(d.a?' | '+d.a:'')+' | '+payText;
-  return true;
-}
-
-function unlockScroll(){
-  document.body.style.overflow='';
-  document.body.style.overflowY='';
-  document.body.style.paddingRight='';
-  document.body.style.height='';
-  document.body.style.minHeight='';
-  document.body.style.touchAction='';
-  document.documentElement.style.overflow='';
-  document.documentElement.style.overflowY='';
-  document.documentElement.style.paddingRight='';
-  document.body.classList.remove('t-body_popupopened');
-  document.body.classList.remove('t706__body_cartwinshowed');
-  var allrecords=document.getElementById('allrecords');
-  if(allrecords)allrecords.classList.remove('t-records__overflow-hidden');
-}
-
-function showSuccess(){
-  _cartBase=0;_lastDisplayed=0;ins=false;reord=false;
-  var cartWin=document.querySelector('.t706__cartwin');
-  if(cartWin){cartWin.style.display='none';cartWin.style.pointerEvents='none';}
-  var overlay=document.querySelector('.t706__overlay');
-  if(overlay){overlay.style.display='none';overlay.style.pointerEvents='none';}
-  unlockScroll();
-  [50,100,200,400,600,1000].forEach(function(t){setTimeout(unlockScroll,t);});
-  try{localStorage.removeItem(SK);}catch(e){}
-  setTimeout(function(){
-    var old=document.getElementById('cstSuccessOverlay');if(old)old.remove();
-    var ov=document.createElement('div');
-    ov.className='cst-overlay visible';
-    ov.id='cstSuccessOverlay';
-    ov.style.cssText='position:fixed!important;top:0!important;left:0!important;width:100%!important;height:100%!important;z-index:999999!important;display:flex!important;align-items:center!important;justify-content:center!important;background:rgba(0,0,0,.7)!important;pointer-events:all!important;';
-    ov.innerHTML='<div class="cst-popup" style="pointer-events:all!important;position:relative!important;z-index:1000000!important;">'
-      +'<div class="cst-popup-icon"><div class="cst-popup-badge">'
-      +'<svg class="cst-popup-check" viewBox="0 0 24 24"><polyline points="4 12 10 18 20 6"/></svg>'
-      +'</div></div>'
-      +'<h3>Заказ оформлен!</h3>'
-      +'<p>Скоро свяжемся с вами для подтверждения заказа и согласования даты доставки</p>'
-      +'<button class="cst-popup-btn" id="cstSuccessBtn" style="pointer-events:all!important;cursor:pointer!important;">Хорошо</button>'
-      +'</div>';
-    document.body.appendChild(ov);
-    function closeSuccess(){ov.remove();location.reload();}
-    document.getElementById('cstSuccessBtn').addEventListener('click',closeSuccess);
-    ov.addEventListener('click',function(e){if(e.target===ov)closeSuccess();});
-  },400);
-}
-
-function updPay(){
-  var ac=document.querySelector('.dlv-opt.active');
-  var ty=ac?ac.getAttribute('data-d'):'';
-  var payCard=document.querySelector('.pay-opt[data-p="card"]');
-  var payQR=document.getElementById('payQR');
-  var payCash=document.getElementById('payCash');
-  if(!payCard||!payQR||!payCash)return;
-  [payCard,payQR,payCash].forEach(function(o){o.classList.remove('pay-disabled');});
-  if(ty!=='pickup'){payCash.classList.add('pay-disabled');payCash.classList.remove('active');}
-  updDisplay();
-}
-
-function selDlv(el){
-  document.querySelectorAll('.dlv-opt').forEach(function(o){o.classList.remove('active');o.style.borderColor='';});
-  el.classList.add('active');
-  document.querySelectorAll('.dlv-cnt').forEach(function(c){c.classList.remove('visible');});
-  var ty=el.getAttribute('data-d');
-  if(ty==='tk')document.getElementById('cnt-tk').classList.add('visible');
-  if(ty==='pickup'){
-    document.getElementById('cnt-pickup').classList.add('visible');
-    if(!mi){setTimeout(initMap,300);mi=true;}
-    else{
-      setTimeout(function(){if(mp){mp.invalidateSize();mp.setView([59.93,30.38],9);}},100);
-      setTimeout(function(){if(mp)mp.invalidateSize();},400);
+    var ph=document.getElementById('r_phone');if(ph&&d.ph)ph.value=d.ph;
+    if(d.dlv){
+      var dopt=document.querySelector('.dlv-opt[data-d="'+d.dlv+'"]');
+      if(dopt)dopt.click();
     }
-  }
-  if(ty==='courier')document.getElementById('cnt-cour').classList.add('visible');
-  updPay();
+    if(d.tk){var tkEl=document.getElementById('selTK');if(tkEl){tkEl.value=d.tk;tkEl.dispatchEvent(new Event('change'));}}
+    if(d.ts){
+      var tsEl=document.querySelector('.dlv-sub-o[data-ts="'+d.ts+'"]');
+      if(tsEl)tsEl.click();
+    }
+    var pvz=document.getElementById('i_pvz');if(pvz&&d.pvz)pvz.value=d.pvz;
+    var tkc=document.getElementById('i_tkc');if(tkc&&d.tkc)tkc.value=d.tkc;
+    var str=document.getElementById('i_str');if(str&&d.str)str.value=d.str;
+    var hou=document.getElementById('i_hou');if(hou&&d.hou)hou.value=d.hou;
+    var apt=document.getElementById('i_apt');if(apt&&d.apt)apt.value=d.apt;
+    var fl=document.getElementById('i_fl');if(fl&&d.fl)fl.value=d.fl;
+    var dom=document.getElementById('i_dom');if(dom&&d.dom)dom.value=d.dom;
+    var cmt=document.getElementById('i_cmt');if(cmt&&d.cmt)cmt.value=d.cmt;
+    if(d.pay){
+      var popt=document.querySelector('.pay-opt[data-p="'+d.pay+'"]');
+      if(popt)popt.click();
+    }
+    if(d.ag){
+      agreeChecked=true;
+      var abox=document.getElementById('agreeBox');
+      if(abox)abox.classList.add('checked');
+    }
+    if(d.promo){
+      userPromoInput=d.promo;
+      var pi=document.getElementById('promoInput');
+      if(pi)pi.value=d.promo;
+      if(d.promoApplied){
+        promoApplied=true;
+        if(pi){pi.disabled=true;pi.classList.add('promo-ok');}
+        var pbtn=document.getElementById('promoApplyBtn');
+        if(pbtn){pbtn.textContent='Отменить';pbtn.classList.add('promo-cancel-btn');}
+        var pmsg=document.getElementById('promoMsg');
+        if(pmsg){pmsg.textContent='✓ Промокод '+d.promo+' принят!';pmsg.className='promo-msg success';}
+      }
+    }
+  }catch(e){}
 }
 
-function bindAll(){
-  document.querySelectorAll('.dlv-opt').forEach(function(o){o.addEventListener('click',function(){selDlv(this);});});
-  var s=document.getElementById('selTK');
-  if(s)s.addEventListener('change',function(){
-    var sb=document.getElementById('tk-sub');
-    if(sb&&this.value)sb.classList.add('visible');
-  });
-  document.querySelectorAll('.dlv-sub-o').forEach(function(o){
-    o.addEventListener('click',function(){
-      document.querySelectorAll('.dlv-sub-o').forEach(function(x){x.classList.remove('active');});
-      this.classList.add('active');
-      var t=this.getAttribute('data-ts');
-      var pvz=document.getElementById('tk-pvz');
-      var tca=document.getElementById('tk-ca');
-      if(pvz)pvz.classList.toggle('visible',t==='pvz');
-      if(tca)tca.classList.toggle('visible',t==='tkc');
-    });
-  });
-  document.querySelectorAll('.pay-opt').forEach(function(o){
-    o.addEventListener('click',function(){
-      if(this.classList.contains('pay-disabled'))return;
-      document.querySelectorAll('.pay-opt').forEach(function(x){x.classList.remove('active');});
-      this.classList.add('active');
-      updDisplay();
-    });
-  });
-  initDD('i_pvz','dd-pvz');
-  initDD('i_tkc','dd-tkc');
-  updPay();
-  initPromoField();
-  /* Считываем базовую цену при инициализации */
-  _cartBase=calcCartBase();
-  _lastDisplayed=0;
-  updDisplay();
-  startMainTicker();
-  watchCartDOM();
-  watchQuantityBtns();
+/* ===== DADATA ===== */
+function dadataQ(q,type,cb){
+  var urls={'address':'https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/address'};
+  var xhr=new XMLHttpRequest();
+  xhr.open('POST',urls[type||'address']);
+  xhr.setRequestHeader('Content-Type','application/json');
+  xhr.setRequestHeader('Authorization','Token '+DT);
+  xhr.onload=function(){
+    try{var r=JSON.parse(xhr.responseText);cb(r.suggestions||[]);}catch(e){cb([]);}
+  };
+  xhr.onerror=function(){cb([]);};
+  xhr.send(JSON.stringify({query:q,count:5}));
 }
 
-function initDD(iid,sid){
-  var inp=document.getElementById(iid);
-  var box=document.getElementById(sid);
-  if(!inp||!box)return;
-  var tm;
+function initDD(inpId,ddId){
+  var inp=document.getElementById(inpId);
+  var dd=document.getElementById(ddId);
+  if(!inp||!dd)return;
+  var timer=null;
   inp.addEventListener('input',function(){
-    var q=this.value.trim();
-    clearTimeout(tm);
-    if(q.length<3){box.classList.remove('visible');box.innerHTML='';return;}
-    tm=setTimeout(function(){
-      fetch('https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/address',{
-        method:'POST',
-        headers:{'Content-Type':'application/json','Accept':'application/json','Authorization':'Token '+DT},
-        body:JSON.stringify({query:q,count:7,locations:[{country:'Россия'}]})
-      }).then(function(r){return r.json();}).then(function(data){
-        box.innerHTML='';
-        if(data.suggestions&&data.suggestions.length>0){
-          data.suggestions.forEach(function(s){
-            var div=document.createElement('div');
-            div.className='dd-item';
-            div.textContent=s.value;
-            div.addEventListener('click',function(){inp.value=s.value;box.classList.remove('visible');box.innerHTML='';});
-            box.appendChild(div);
+    clearTimeout(timer);
+    var q=inp.value.trim();
+    if(q.length<3){dd.innerHTML='';dd.classList.remove('visible');return;}
+    timer=setTimeout(function(){
+      dadataQ(q,'address',function(items){
+        dd.innerHTML='';
+        if(!items.length){dd.classList.remove('visible');return;}
+        items.forEach(function(s){
+          var div=document.createElement('div');
+          div.className='dd-item';
+          div.textContent=s.value;
+          div.addEventListener('click',function(){
+            inp.value=s.value;
+            dd.innerHTML='';
+            dd.classList.remove('visible');
+            inp.classList.remove('cst-err');
+            saveState();
           });
-          box.classList.add('visible');
-        }else{box.classList.remove('visible');}
-      }).catch(function(){box.classList.remove('visible');});
+          dd.appendChild(div);
+        });
+        dd.classList.add('visible');
+      });
     },300);
   });
   document.addEventListener('click',function(e){
-    if(!inp.contains(e.target)&&!box.contains(e.target))box.classList.remove('visible');
+    if(!dd.contains(e.target)&&e.target!==inp){dd.innerHTML='';dd.classList.remove('visible');}
   });
 }
 
+/* ===== КАРТА ===== */
 function initMap(){
-  var c=[59.93,30.38],z=9;
-  mp=L.map('dlv-map',{center:c,zoom:z,zoomControl:true,scrollWheelZoom:true,attributionControl:false});
-  L.tileLayer('https://tile2.maps.2gis.com/tiles?x={x}&y={y}&z={z}&v=1&ts=online_sd',{maxZoom:18}).addTo(mp);
-  var ic=L.divIcon({
-    html:'<div style="width:16px;height:16px;background:#FF6B35;border-radius:50%;border:3px solid #fff;box-shadow:0 0 20px rgba(255,107,53,0.7)"></div>',
-    iconSize:[22,22],iconAnchor:[11,11],className:''
-  });
-  var mk=L.marker([59.878830,30.436296],{icon:ic}).addTo(mp)
-    .bindPopup('<div style="background:#1a1a1a;color:#FF6B35;padding:12px 16px;border-radius:8px;font-size:14px;border:1px solid rgba(255,107,53,0.3)"><b>Санкт-Петербург, Полярников 9</b></div>',{className:'dark-popup',closeButton:false});
-  mk.on('click',function(){mp.flyTo([59.878830,30.436296],17,{duration:1.5});});
-  mp.on('popupclose',function(){mp.flyTo(c,z,{duration:1.5});});
-  var fc=0,fi=setInterval(function(){
-    if(mp){mp.invalidateSize();mp.setView(c,z);}
-    fc++;if(fc>10)clearInterval(fi);
+  if(mi)return;
+  var mc=document.getElementById('dlv-map');
+  if(!mc||!mc.offsetParent)return;
+  mi=true;
+  setTimeout(function(){
+    mp=L.map('dlv-map',{center:[59.858,30.38],zoom:15,scrollWheelZoom:false});
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OSM'}).addTo(mp);
+    L.marker([59.858,30.38]).addTo(mp).bindPopup('ул. Полярников, д. 9').openPopup();
+    mp.invalidateSize();
   },200);
 }
 
-function hideTildaSubmit(){
-  var form=document.getElementById(FORM_ID);
-  if(!form)return;
-  var btn=form.querySelector('button.t-submit,button[type="submit"]');
-  if(btn){
-    btn.style.cssText='position:absolute!important;opacity:0!important;pointer-events:none!important;height:0!important;overflow:hidden!important;margin:0!important;padding:0!important;border:none!important;';
-  }
-}
-
-function tryIns(){
-  if(_focused)return;
-  var hasR=document.getElementById('rBlock');
-  var hasD=document.getElementById('dBlock');
-  var hasP=document.getElementById('pBlock');
-  if(ins&&hasR&&hasD&&hasP)return;
-  if(!hasR||!hasD||!hasP){
-    _cartBase=0;_lastDisplayed=0;
-    ins=false;reord=false;
-  }
-  if(hasR&&hasD&&hasP){ins=true;if(!reord)reorder();return;}
-  if(hasR)hasR.remove();
-  if(hasD)hasD.remove();
-  if(hasP)hasP.remove();
-  var ct=document.querySelector('.t706__cartwin-content');
-  if(!ct)return;
-  var w1=document.createElement('div');w1.innerHTML=rH;
-  var w2=document.createElement('div');w2.innerHTML=dH;
-  var w3=document.createElement('div');w3.innerHTML=pH;
-  var tot=null;
-  var children=Array.prototype.slice.call(ct.children);
-  for(var i=0;i<children.length;i++){
-    var el=children[i];
-    var cn=el.className||'';
-    if(cn.indexOf('total')!==-1||cn.indexOf('Total')!==-1){tot=el;break;}
-    if(el.textContent&&el.textContent.indexOf('Итоговая сумма')!==-1){tot=el;break;}
-  }
-  if(tot){
-    ct.insertBefore(w3.firstElementChild,tot);
-    ct.insertBefore(w2.firstElementChild,document.getElementById('pBlock'));
-    ct.insertBefore(w1.firstElementChild,document.getElementById('dBlock'));
-  }else{
-    ct.appendChild(w1.firstElementChild);
-    ct.appendChild(w2.firstElementChild);
-    ct.appendChild(w3.firstElementChild);
-  }
-  ins=true;
-  bindAll();
-  initPhone();
-  clearErr();
-  bindSave();
-  initAgree();
-  hideTildaSubmit();
-  setTimeout(function(){
-    var attempts=0;
-    var waitTot=setInterval(function(){
-      var tot=document.querySelector('.t706__cartwin-totalamount-wrap');
-      attempts++;
-      if(tot||attempts>20){
-        clearInterval(waitTot);
-        reorder();
-        restoreState();
-      }
-    },100);
-  },150);
-}
-
-function reorder(){
-  var r=document.getElementById('rBlock');
-  var d=document.getElementById('dBlock');
-  var p=document.getElementById('pBlock');
-  if(!r||!d||!p)return;
-  var pr=r.parentNode;
-  if(!pr)return;
-  var sub=null;
-  var tot=document.querySelector('.t706__cartwin-totalamount-wrap');
-  var children=Array.prototype.slice.call(pr.children);
-  for(var i=0;i<children.length;i++){
-    var el=children[i];
-    if(el===r||el===d||el===p)continue;
-    var btn=el.querySelector('button.t-submit,button[type="submit"]');
-    if(btn){sub=el;continue;}
-  }
-  pr.appendChild(r);
-  pr.appendChild(d);
-  pr.appendChild(p);
-  var disc=document.getElementById('discountInfo');
-  if(disc)pr.appendChild(disc);
-  if(tot){
-    pr.appendChild(tot);
-    tot.style.setProperty('display','block','important');
-    tot.style.setProperty('opacity','1','important');
-    tot.style.setProperty('height','auto','important');
-    tot.style.setProperty('overflow','visible','important');
-    tot.style.setProperty('position','static','important');
-  }
-  var existBtn=document.getElementById('cstSubmitBtn');
-  if(!existBtn){
-    var btnWrap=document.createElement('div');
-    btnWrap.innerHTML='<button class="cst-submit-btn" id="cstSubmitBtn">Оформить заказ</button>';
-    var newBtn=btnWrap.firstElementChild;
-    newBtn.addEventListener('click',function(){inject();});
-    pr.appendChild(newBtn);
-  }else{
-    pr.appendChild(existBtn);
-  }
-  if(sub){
-    sub.style.cssText='position:absolute!important;opacity:0!important;pointer-events:none!important;height:0!important;overflow:hidden!important;';
-  }
-  var of=document.querySelector('.t706__orderform');
-  if(of){
-    of.style.setProperty('opacity','1','important');
-    of.style.setProperty('height','auto','important');
-    of.style.setProperty('overflow','visible','important');
-    of.style.setProperty('position','static','important');
-    of.style.setProperty('pointer-events','auto','important');
-  }
-  reord=true;
-  hideTildaSubmit();
-}
-
-function inject(){
-  if(!validate())return false;
-  var d=getDD();
-  if(!d)return false;
-  var ok=fillTildaForm(d);
-  if(!ok){console.warn('Форма не найдена');return false;}
-  _injecting=true;
-  setTimeout(function(){
-    var form=document.getElementById(FORM_ID);
-    if(!form){_injecting=false;return;}
-    var btn=form.querySelector('button.t-submit,button[type="submit"]');
-    if(!btn){_injecting=false;return;}
-    btn.style.cssText='';
-    var promoCode=resolvePromoCode();
-    var hasPromo=!!promoCode;
-    if(hasPromo)applyPromo();
-    setTimeout(function(){
-      btn.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));
-    },hasPromo?1500:0);
-    setTimeout(function(){
-      hideTildaSubmit();
-      _injecting=false;
-    },3000);
-  },150);
-  return 'handled';
-}
-
-document.addEventListener('click',function(e){
-  if(_injecting)return;
-  var b=e.target.closest('button.t-submit,button[type="submit"]');
-  if(!b)return;
-  if(b.id==='cstSubmitBtn')return;
-  var cartWin=document.querySelector('.t706__cartwin');
-  if(!cartWin||!cartWin.contains(b))return;
-  var form=document.getElementById(FORM_ID);
-  if(!form||!form.contains(b))return;
-  e.preventDefault();
-  e.stopPropagation();
-  e.stopImmediatePropagation();
-},true);
-
-document.addEventListener('tildaform:aftersend',function(e){
-  if(e.detail&&(e.detail.formId===FORM_ID||e.detail.id===FORM_ID)){
-    showSuccess();
-  }
-});
-
-var successOb=new MutationObserver(function(mu){
-  mu.forEach(function(m){
-    m.addedNodes.forEach(function(node){
-      if(node.nodeType===1){
-        var cn=node.className||'';
-        if(cn.indexOf('t-form__success')!==-1||cn.indexOf('js-send-success')!==-1){
-          node.style.display='none';
-          showSuccess();
-        }
-        var inner=node.querySelector&&node.querySelector('.t-form__success,.js-send-success');
-        if(inner){inner.style.display='none';showSuccess();}
-      }
+/* ===== ДОСТАВКА / ОПЛАТА ===== */
+function initDlv(){
+  document.querySelectorAll('.dlv-opt').forEach(function(opt){
+    opt.addEventListener('click',function(){
+      if(opt.classList.contains('active')){return;}
+      document.querySelectorAll('.dlv-opt').forEach(function(o){o.classList.remove('active');});
+      document.querySelectorAll('.dlv-cnt').forEach(function(c){c.classList.remove('visible');});
+      opt.classList.add('active');
+      opt.classList.remove('cst-err');
+      var ty=opt.getAttribute('data-d');
+      var cnt=document.getElementById('cnt-'+(ty==='courier'?'cour':ty));
+      if(cnt)cnt.classList.add('visible');
+      if(ty==='pickup')initMap();
+      updPayAvail();
+      saveState();
     });
-    if(m.target&&m.target.nodeType===1){
-      var cn2=m.target.className||'';
-      if((cn2.indexOf('t-form__success')!==-1||cn2.indexOf('js-send-success')!==-1)&&
-         m.target.style.display!=='none'){
-        m.target.style.display='none';
-        showSuccess();
+  });
+  document.querySelectorAll('.dlv-sub-o').forEach(function(so){
+    so.addEventListener('click',function(){
+      document.querySelectorAll('.dlv-sub-o').forEach(function(s){s.classList.remove('active');});
+      so.classList.add('active');
+      var ts=so.getAttribute('data-ts');
+      document.querySelectorAll('.dlv-tk-addr').forEach(function(a){a.classList.remove('visible');});
+      if(ts==='pvz')document.getElementById('tk-pvz').classList.add('visible');
+      else document.getElementById('tk-ca').classList.add('visible');
+      saveState();
+    });
+  });
+  var sel=document.getElementById('selTK');
+  if(sel){
+    sel.addEventListener('change',function(){
+      var sub=document.getElementById('tk-sub');
+      if(sub)sub.classList.add('visible');
+      sel.classList.remove('cst-err');
+      saveState();
+    });
+  }
+}
+
+function updPayAvail(){
+  var ad=document.querySelector('.dlv-opt.active');
+  var ty=ad?ad.getAttribute('data-d'):'';
+  var cash=document.getElementById('payCash');
+  if(!cash)return;
+  if(ty==='tk'){
+    cash.classList.add('pay-disabled');
+    if(cash.classList.contains('active')){
+      cash.classList.remove('active');
+      cash.querySelector('.pay-dot').classList.remove('active');
+      var cardOpt=document.querySelector('.pay-opt[data-p="card"]');
+      if(cardOpt){cardOpt.classList.add('active');cardOpt.querySelector('.pay-dot').classList.add('active');}
+      updDisplay();
+    }
+  }else{
+    cash.classList.remove('pay-disabled');
+  }
+}
+
+function initPay(){
+  document.querySelectorAll('.pay-opt').forEach(function(opt){
+    opt.addEventListener('click',function(){
+      if(opt.classList.contains('pay-disabled'))return;
+      document.querySelectorAll('.pay-opt').forEach(function(o){
+        o.classList.remove('active');
+        var dt=o.querySelector('.pay-dot');if(dt)dt.classList.remove('active');
+      });
+      opt.classList.add('active');
+      opt.classList.remove('cst-err');
+      var dt=opt.querySelector('.pay-dot');if(dt)dt.classList.add('active');
+
+      _cartBase=calcCartBase();
+      _lastDisplayed=0;
+      updDisplay();
+      saveState();
+    });
+  });
+}
+
+/* ===== ИНЖЕКТ ===== */
+function inject(){
+  if(ins||_injecting)return;
+  var cartWin=document.querySelector('.t706__cartwin');
+  if(!cartWin)return;
+  var formWrap=cartWin.querySelector('.t706__cartwin-form-wrapper');
+  if(!formWrap)return;
+  var tildaForm=formWrap.querySelector('.t-form');
+  if(!tildaForm)return;
+
+  _injecting=true;
+
+  /* Скрываем стандартную форму */
+  tildaForm.style.display='none';
+
+  /* Проверяем не инжектили ли уже */
+  if(formWrap.querySelector('#rBlock')){
+    ins=true;
+    _injecting=false;
+    return;
+  }
+
+  /* Добавляем наши блоки */
+  var wrapper=document.createElement('div');
+  wrapper.id='cstCheckout';
+  wrapper.innerHTML=rH+dH+pH;
+  formWrap.insertBefore(wrapper,tildaForm);
+
+  /* Ищем кнопку отправки */
+  var origBtn=tildaForm.querySelector('.t-submit');
+  if(origBtn){
+    origBtn.style.display='none';
+  }
+
+  var submitBtn=document.createElement('button');
+  submitBtn.type='button';
+  submitBtn.className='cst-submit-btn';
+  submitBtn.textContent='Оформить заказ';
+  wrapper.appendChild(submitBtn);
+
+  submitBtn.addEventListener('click',function(){
+    if(!validate())return;
+
+    /* Собираем данные */
+    var nm=document.getElementById('r_name').value.trim();
+    var em=document.getElementById('r_email').value.trim();
+    var ph=cc.d+document.getElementById('r_phone').value.replace(/\D/g,'');
+
+    /* Способ доставки */
+    var dlvOpt=document.querySelector('.dlv-opt.active');
+    var dlvType=dlvOpt?dlvOpt.getAttribute('data-d'):'';
+    var dlvStr='';
+    if(dlvType==='tk'){
+      var tkSel=document.getElementById('selTK');
+      var tkName=tkSel?tkSel.options[tkSel.selectedIndex].text:'';
+      var subOpt=document.querySelector('.dlv-sub-o.active');
+      var subType=subOpt?subOpt.getAttribute('data-ts'):'pvz';
+      if(subType==='pvz'){
+        dlvStr='ТК '+tkName+', ПВЗ: '+(document.getElementById('i_pvz').value||'');
+      }else{
+        dlvStr='ТК '+tkName+', Курьер: '+(document.getElementById('i_tkc').value||'');
+      }
+    }else if(dlvType==='courier'){
+      dlvStr='Курьер СПб: '+[
+        document.getElementById('i_str').value,
+        'д.'+document.getElementById('i_hou').value,
+        document.getElementById('i_apt').value?'кв.'+document.getElementById('i_apt').value:'',
+        document.getElementById('i_fl').value?'эт.'+document.getElementById('i_fl').value:'',
+        document.getElementById('i_dom').value?'домофон '+document.getElementById('i_dom').value:''
+      ].filter(Boolean).join(', ');
+      var cmt=document.getElementById('i_cmt').value;
+      if(cmt)dlvStr+=' | '+cmt;
+    }else if(dlvType==='pickup'){
+      dlvStr='Самовывоз: ул. Полярников, д. 9';
+    }
+
+    /* Оплата */
+    var payOpt=document.querySelector('.pay-opt.active');
+    var payType=payOpt?payOpt.getAttribute('data-p'):'';
+    var payStr='';
+    if(payType==='card')payStr='Банковская карта';
+    if(payType==='qr')payStr='QR-код (скидка 3%)';
+    if(payType==='cash')payStr='Наличные при получении';
+
+    /* Промокод */
+    var promoCode=resolvePromoCode();
+
+    /* Итоговая сумма */
+    var calc=calcFinal(_cartBase);
+
+    /* Заполняем скрытые поля тильды */
+    var fillField=function(name,val){
+      var inp=tildaForm.querySelector('[name="'+name+'"]');
+      if(inp){
+        var nativeSetter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;
+        nativeSetter.call(inp,val);
+        inp.dispatchEvent(new Event('input',{bubbles:true}));
+        inp.dispatchEvent(new Event('change',{bubbles:true}));
+      }
+    };
+
+    fillField('Name',nm);
+    fillField('Email',em);
+    fillField('Phone',ph);
+
+    /* Комментарий с полной инфой */
+    var comment='Доставка: '+dlvStr+'\nОплата: '+payStr;
+    if(promoCode)comment+='\nПромокод: '+promoCode;
+    if(calc.qrDisc>0)comment+='\nСкидка QR: -'+fmtSum(calc.qrDisc);
+    comment+='\nИтого: '+fmtSum(calc.total);
+
+    var tArea=tildaForm.querySelector('textarea[name="Input"]');
+    if(!tArea)tArea=tildaForm.querySelector('textarea');
+    if(tArea){
+      tArea.value=comment;
+      tArea.dispatchEvent(new Event('input',{bubbles:true}));
+    }
+
+    /* Применяем промокод в тильду */
+    if(promoCode){
+      applyPromo();
+    }
+
+    /* Отправляем форму */
+    setTimeout(function(){
+      if(origBtn){
+        origBtn.click();
+      }else{
+        var ev=document.createEvent('Event');
+        ev.initEvent('submit',true,true);
+        tildaForm.dispatchEvent(ev);
+      }
+    },promoCode?500:100);
+  });
+
+  /* Инициализация всех компонентов */
+  initPhone();
+  initDlv();
+  initPay();
+  initAgree();
+  initPromoField();
+  initDD('i_pvz','dd-pvz');
+  initDD('i_tkc','dd-tkc');
+  initDD('i_str','dd-str');
+  clearErr();
+
+  /* Автосохранение */
+  var allInputs=wrapper.querySelectorAll('input,textarea,select');
+  allInputs.forEach(function(inp){
+    inp.addEventListener('input',saveState);
+    inp.addEventListener('change',saveState);
+  });
+
+  loadState();
+
+  /* Читаем начальную сумму */
+  _cartBase=calcCartBase();
+  updDisplay();
+
+  startMainTicker();
+  watchCartDOM();
+  watchQuantityBtns();
+
+  ins=true;
+  _injecting=false;
+}
+
+/* ===== НАБЛЮДАТЕЛИ ===== */
+function waitForCart(){
+  var ob=new MutationObserver(function(){
+    var cartWin=document.querySelector('.t706__cartwin');
+    if(cartWin){
+      var isVisible=cartWin.offsetParent!==null||cartWin.style.display!=='none';
+      if(isVisible){
+        setTimeout(inject,300);
       }
     }
   });
-});
+  ob.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['style','class']});
 
-document.addEventListener('click',function(e){
-  if(e.target.closest('.t706__cartwin-close,.t706__overlay')){
-    setTimeout(function(){
-      document.body.style.overflow='';
-      document.body.style.paddingRight='';
-      document.documentElement.style.overflow='';
-      document.documentElement.style.paddingRight='';
-      document.body.classList.remove('t-body_popupopened');
-    },100);
-  }
-});
-
-var ob=new MutationObserver(function(mu){
-  if(_focused)return;
-  var need=false;
-  for(var i=0;i<mu.length;i++){if(mu[i].addedNodes.length>0){need=true;break;}}
-  if(!need)return;
-  if(!document.getElementById('rBlock')||!document.getElementById('dBlock')||!document.getElementById('pBlock')){
-    ins=false;mi=false;reord=false;
-  }
-  tryIns();
-});
-
-var scrollOb=new MutationObserver(function(){
-  var ov=document.getElementById('cstSuccessOverlay');
-  if(ov)return;
-  if(document.body.style.overflow==='hidden'||document.body.classList.contains('t-body_popupopened')){
-    var cartWin=document.querySelector('.t706__cartwin');
-    if(!cartWin||cartWin.style.display==='none'||!cartWin.classList.contains('t706__cartwin_showed')){
-      unlockScroll();
+  /* Также проверяем по клику на корзину */
+  document.addEventListener('click',function(e){
+    var btn=e.target.closest('.t706__carticon-wrapper,a[href*="cart"],.t706__carticon,.js-cart-btn,[data-tooltip-hook="#cart"],.t-store__cart-btn');
+    if(btn){
+      setTimeout(inject,500);
+      setTimeout(inject,1000);
+      setTimeout(inject,2000);
     }
-  }
-});
-
-function startObservers(){
-  ob.observe(document.body,{childList:true,subtree:true});
-  scrollOb.observe(document.body,{attributes:true,attributeFilter:['class','style']});
-  successOb.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['style','class']});
+  });
 }
 
-window.addEventListener('resize',function(){
-  if(_focused)return;
-  var r=document.getElementById('rBlock');
-  var d=document.getElementById('dBlock');
-  var p=document.getElementById('pBlock');
-  if(!r||!d||!p)return;
-  reord=false;
-  reorder();
-});
-
-if(document.body){startObservers();}
-else{document.addEventListener('DOMContentLoaded',startObservers);}
-
-tryIns();
-var ci=setInterval(function(){
-  if(_focused)return;
-  if(!document.getElementById('rBlock')||!document.getElementById('dBlock')||!document.getElementById('pBlock')){
-    ins=false;reord=false;
-  }
-  tryIns();
-},800);
-setTimeout(function(){
-  clearInterval(ci);
-  setInterval(function(){
-    if(_focused)return;
-    if(!document.getElementById('rBlock')||!document.getElementById('dBlock')||!document.getElementById('pBlock')){
-      ins=false;mi=false;reord=false;
-    }
-    tryIns();
-  },2000);
-},30000);
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded',waitForCart);
+}else{
+  waitForCart();
+}
 
 }
 })();
