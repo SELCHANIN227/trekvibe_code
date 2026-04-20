@@ -137,7 +137,7 @@
 .t706__cartwin-content{overflow-x:hidden!important}
 .t706__cartwin{overflow-x:hidden!important}
 .t706__cartwin-wrap{overflow-x:hidden!important}
-.cst-block{max-width:100%!important;overflow:hidden!important}
+.cst-block{max-width:100%!important;overflow:visible!important}
 
 /* Скрытие промо-ошибок и инфо */
 .t706__cartwin .t-form__error,
