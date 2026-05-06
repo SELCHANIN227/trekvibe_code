@@ -17,14 +17,16 @@
     var banner = document.getElementById('cart-mini-banner');
     if (!banner) return;
     var qty = getCartTotalQuantity();
-    if (qty >= 2) {
+    if (qty >= 3) {
       banner.classList.remove('state-orange');
       banner.classList.add('state-green');
       banner.innerHTML = '<span>Доставка вашего заказа будет <strong>бесплатная!</strong></span>';
     } else {
       banner.classList.remove('state-green');
       banner.classList.add('state-orange');
-      banner.innerHTML = '<span>Добавьте ещё один товар для <strong>бесплатной</strong> доставки!</span>';
+      var left = 3 - qty;
+      var word = left === 1 ? 'товар' : 'товара';
+      banner.innerHTML = '<span>Добавьте ещё <strong>' + left + '</strong> ' + word + ' для <strong>бесплатной</strong> доставки!</span>';
     }
   }
 
