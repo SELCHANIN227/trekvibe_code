@@ -155,13 +155,13 @@
 .t706__cartwin [class*="totals"][class*="discount"]{display:none!important}
 
 /* Баннеры */
-#tvb, #tvb2 {
+#tvb, #tvb2, #tvb3 {
   position: fixed;
   bottom: 130px;
   right: 20px;
   width: 350px;
   border-radius: 16px;
-  padding: 30px 26px 26px 26px;
+  padding: 50px 32px 36px 32px;
   z-index: 999998;
   box-shadow: 0 8px 40px rgba(0,0,0,0.7);
   font-family: Arial, sans-serif;
@@ -175,37 +175,40 @@
 #tvb {
   background: linear-gradient(160deg, #1c1c1a 0%, #1c1c1a 40%, #6b2500 100%);
 }
+#tvb3 {
+  background: linear-gradient(160deg, #1c1c1a 0%, #1c1c1a 40%, #6b2500 100%);
+}
 #tvb2 {
   background: linear-gradient(160deg, #1c1c1a 0%, #1c1c1a 40%, #1a4a1a 100%);
 }
-#tvb.tvb-show, #tvb2.tvb2-show {
+#tvb.tvb-show, #tvb2.tvb2-show, #tvb3.tvb3-show {
   opacity: 1;
   transform: translateY(0);
   pointer-events: all;
   visibility: visible;
 }
-#tvb-x, #tvb2-x {
+#tvb-x, #tvb2-x, #tvb3-x {
   position: absolute;
-  top: 14px;
-  right: 16px;
+  top: 18px;
+  right: 18px;
   background: none;
   border: none;
   color: rgba(255,255,255,0.4);
-  font-size: 18px;
+  font-size: 20px;
   cursor: pointer;
   line-height: 1;
   padding: 4px 6px;
   transition: color 0.2s;
   pointer-events: all !important;
 }
-#tvb-x:hover, #tvb2-x:hover { color: #fff; }
-.tvb-icon, .tvb2-icon { margin-bottom: 20px; }
-.tvb-title {
+#tvb-x:hover, #tvb2-x:hover, #tvb3-x:hover { color: #fff; }
+.tvb-icon, .tvb2-icon, .tvb3-icon { margin-bottom: 24px; }
+.tvb-title, .tvb3-title {
   font-size: 32px;
   font-weight: 900;
   color: #FF6B35;
   line-height: 1.1;
-  margin: 0 0 16px 0;
+  margin: 0 0 20px 0;
   text-transform: uppercase;
 }
 .tvb2-title {
@@ -213,17 +216,17 @@
   font-weight: 900;
   color: #4caf50;
   line-height: 1.1;
-  margin: 0 0 16px 0;
+  margin: 0 0 20px 0;
   text-transform: uppercase;
 }
-.tvb-text, .tvb2-text {
+.tvb-text, .tvb2-text, .tvb3-text {
   font-size: 14px;
   color: #ccc;
   line-height: 1.55;
-  margin: 0 0 22px 0;
+  margin: 0 0 28px 0;
 }
-.tvb-text strong, .tvb2-text strong { color: #fff; font-weight: 700; }
-.tvb-btn, .tvb2-btn {
+.tvb-text strong, .tvb2-text strong, .tvb3-text strong { color: #fff; font-weight: 700; }
+.tvb-btn, .tvb2-btn, .tvb3-btn {
   display: block;
   width: 100%;
   background: transparent;
@@ -231,7 +234,7 @@
   color: #fff;
   font-size: 14px;
   font-weight: 600;
-  padding: 14px 16px;
+  padding: 16px 16px;
   border-radius: 10px;
   cursor: pointer;
   transition: background 0.2s, border-color 0.2s;
@@ -239,12 +242,12 @@
   box-sizing: border-box;
   pointer-events: all !important;
 }
-.tvb-btn:hover, .tvb2-btn:hover {
+.tvb-btn:hover, .tvb2-btn:hover, .tvb3-btn:hover {
   background: rgba(255,255,255,0.08);
   border-color: rgba(255,255,255,0.6);
 }
 @media (max-width: 480px) {
-  #tvb, #tvb2 {
+  #tvb, #tvb2, #tvb3 {
     width: calc(100% - 40px);
     left: 20px;
     right: 20px;
