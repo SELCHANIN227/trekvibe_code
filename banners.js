@@ -2,6 +2,30 @@
   if(window.__tvbInit) return;
   window.__tvbInit = true;
 
+  // === Создаём HTML баннеров, если их нет ===
+if(!document.getElementById('tvb')){
+  var _tvb = document.createElement('div');
+  _tvb.id = 'tvb';
+  _tvb.innerHTML =
+    '<button id="tvb-x" aria-label="Закрыть">×</button>' +
+    '<div class="tvb-title">Отличный<br>выбор!</div>' +
+    '<div class="tvb-text">Добавьте ещё <strong>2 товара</strong> в корзину и получите <strong>скидку</strong>.</div>' +
+    '<button id="tvb-continue" class="tvb-btn">Продолжить покупки</button>';
+  document.body.appendChild(_tvb);
+}
+
+if(!document.getElementById('tvb2')){
+  var _tvb2 = document.createElement('div');
+  _tvb2.id = 'tvb2';
+  _tvb2.innerHTML =
+    '<button id="tvb2-x" aria-label="Закрыть">×</button>' +
+    '<div class="tvb2-title">Ещё<br>немного!</div>' +
+    '<div class="tvb2-text">Добавьте ещё <strong>1 товар</strong> и получите <strong>максимальную скидку</strong>.</div>' +
+    '<button id="tvb2-continue" class="tvb2-btn">Продолжить покупки</button>';
+  document.body.appendChild(_tvb2);
+}
+// === Конец ===
+  
   function getBadge(){
     return document.querySelector('.t706__carticon-counter');
   }
