@@ -23,13 +23,13 @@
         '<button id="tvb-continue" class="tvb-btn">Продолжить покупки</button>';
       document.body.appendChild(e1);
     }
-    if(!document.getElementById('tvb3')){
+        if(!document.getElementById('tvb3')){
       var e3 = document.createElement('div');
       e3.id = 'tvb3';
       e3.innerHTML =
         '<button id="tvb3-x" aria-label="Закрыть">×</button>' +
-        '<div class="tvb3-title">Почти<br>у цели!</div>' +
-        '<div class="tvb3-text">Добавьте ещё <strong>1 товар</strong> и получите <strong>бесплатную доставку по России</strong>.</div>' +
+        '<div class="tvb3-title">Ещё<br>немного!</div>' +
+        '<div class="tvb3-text">До <strong>бесплатной доставки</strong> остался <strong>один товар</strong>.</div>' +
         '<button id="tvb3-continue" class="tvb3-btn">Продолжить покупки</button>';
       document.body.appendChild(e3);
     }
