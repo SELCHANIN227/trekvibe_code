@@ -1,22 +1,53 @@
 (function() {
 
+  /* Проверяет, является ли продукт автопалаткой по названию */
+  function isTent(productEl) {
+    var titleEl = productEl.querySelector('.t706__product-title, .t706__product-title a');
+    if (!titleEl) return false;
+    var title = (titleEl.textContent || '').trim().toLowerCase();
+    return title.indexOf('автопалатка') === 0;
+  }
+
+  /* Считаем количество товаров БЕЗ автопалаток */
   function getCartTotalQuantity() {
     var total = 0;
-    document.querySelectorAll('.t706__product-quantity').forEach(function(el) {
-      total += parseInt(el.textContent) || 0;
+    var products = document.querySelectorAll('.t706__product');
+
+    products.forEach(function(product) {
+      if (isTent(product)) return; /* автопалатки не считаем */
+
+      var qty = 0;
+      var qEl = product.querySelector('.t706__product-quantity');
+      if (qEl) {
+        var inp = qEl.querySelector('input');
+        if (inp) {
+          qty = parseInt(inp.value) || 0;
+        } else {
+          qty = parseInt(qEl.textContent) || 0;
+        }
+      }
+      if (!qty) qty = 1;
+      total += qty;
     });
-    if (total > 0) return total;
-    document.querySelectorAll('.t706__product-quantity input').forEach(function(el) {
-      total += parseInt(el.value) || 0;
-    });
-    if (total > 0) return total;
-    return document.querySelectorAll('.t706__product').length;
+
+    return total;
+  }
+
+  /* Есть ли в корзине хоть одна автопалатка */
+  function hasTent() {
+    var products = document.querySelectorAll('.t706__product');
+    for (var i = 0; i < products.length; i++) {
+      if (isTent(products[i])) return true;
+    }
+    return false;
   }
 
   function updateCartBanner() {
     var banner = document.getElementById('cart-mini-banner');
     if (!banner) return;
+
     var qty = getCartTotalQuantity();
+
     if (qty >= 3) {
       banner.classList.remove('state-orange');
       banner.classList.add('state-green');
@@ -26,7 +57,21 @@
       banner.classList.add('state-orange');
       var left = 3 - qty;
       var word = left === 1 ? 'товар' : 'товара';
-      banner.innerHTML = '<span>Добавьте ещё <strong>' + left + '</strong> ' + word + ' для <strong>бесплатной</strong> доставки!</span>';
+      if (qty === 0) {
+        banner.innerHTML = '<span>Добавьте <strong>3</strong> товара для <strong>бесплатной</strong> доставки!</span>';
+      } else {
+        banner.innerHTML = '<span>Добавьте ещё <strong>' + left + '</strong> ' + word + ' для <strong>бесплатной</strong> доставки!</span>';
+      }
+    }
+
+    /* Сноска про автопалатки */
+    var note = document.getElementById('cart-tent-note');
+    if (note) {
+      if (hasTent()) {
+        note.classList.add('visible');
+      } else {
+        note.classList.remove('visible');
+      }
     }
   }
 
@@ -37,13 +82,21 @@
     }
     var productsContainer = document.querySelector('.t706__cartwin-products');
     if (!productsContainer) return;
+
     var banner = document.createElement('div');
     banner.id = 'cart-mini-banner';
+
+    var note = document.createElement('div');
+    note.id = 'cart-tent-note';
+    note.textContent = '* Автопалатки не участвуют в акции бесплатной доставки. Стоимость доставки автопалатки будет рассчитана после оформления заявки. На остальные товары акция действует.';
+
     var amountBlock = document.querySelector('.t706__cartwin-amount');
     if (amountBlock) {
       amountBlock.parentNode.insertBefore(banner, amountBlock);
+      amountBlock.parentNode.insertBefore(note, amountBlock);
     } else {
       productsContainer.parentNode.insertBefore(banner, productsContainer.nextSibling);
+      productsContainer.parentNode.insertBefore(note, banner.nextSibling);
     }
     updateCartBanner();
   }
