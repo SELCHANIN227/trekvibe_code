@@ -3,13 +3,42 @@
   window.__tvbInit = true;
 
   var b1=null, b2=null, b3=null;
-  var t1=null, t2=null, t3=null;
-  var v1=false, v2=false, v3=false;
+
+  // НАШ СОБСТВЕННЫЙ СЧЁТЧИК (не считаем автопалатки)
+  var nonTentCount = parseInt(sessionStorage.getItem('tvb_nonTentCount')) || 0;
 
   function getBadge(){ return document.querySelector('.t706__carticon-counter'); }
   function getCartCount(){
     var b = getBadge();
     return b ? (parseInt(b.textContent) || 0) : 0;
+  }
+
+  // Определяем, автопалатка ли это (по слову "автопалатка" в названии)
+  function isAutoTent(clickedEl){
+    var sources = [];
+
+    // 1) Попап товара
+    var popupName = document.querySelector('.t-store__prod-popup__name, .t-store__prod-popup__title');
+    if(popupName) sources.push(popupName.textContent);
+
+    // 2) Карточка товара рядом с кнопкой
+    if(clickedEl && clickedEl.closest){
+      var card = clickedEl.closest('.t-store__card, .js-product, .t951__card, .t776__card');
+      if(card){
+        var cardName = card.querySelector('.t-store__card__title, .js-product-name, .t-name, .t776__title');
+        if(cardName) sources.push(cardName.textContent);
+      }
+    }
+
+    // 3) Заголовок страницы товара (если открыта отдельная страница товара)
+    var pageTitle = document.querySelector('.t-store__prod__title, .js-product-name');
+    if(pageTitle) sources.push(pageTitle.textContent);
+
+    for(var i=0; i<sources.length; i++){
+      var txt = (sources[i] || '').toLowerCase();
+      if(txt.indexOf('автопалатк') !== -1) return true;
+    }
+    return false;
   }
 
   function createBanners(){
@@ -23,7 +52,7 @@
         '<button id="tvb-continue" class="tvb-btn">Продолжить покупки</button>';
       document.body.appendChild(e1);
     }
-        if(!document.getElementById('tvb3')){
+    if(!document.getElementById('tvb3')){
       var e3 = document.createElement('div');
       e3.id = 'tvb3';
       e3.innerHTML =
@@ -101,20 +130,31 @@
       pcls.indexOf('t706__product-plus') !== -1;
     if(!found) return;
 
+    // Если автопалатка — НЕ увеличиваем наш счётчик и НЕ показываем баннер
+    if(isAutoTent(t)){
+      return;
+    }
+
+    // Увеличиваем НАШ счётчик (без автопалаток)
+    nonTentCount++;
+    sessionStorage.setItem('tvb_nonTentCount', nonTentCount);
+
     setTimeout(function(){
-      var n = getCartCount();
-      if(n === 1) b1show();
-      else if(n === 2) b3show();
-      else if(n === 3) b2show();
+      if(nonTentCount === 1) b1show();
+      else if(nonTentCount === 2) b3show();
+      else if(nonTentCount === 3) b2show();
     }, 50);
   });
 
   function watchBadge(badge){
     var obs = new MutationObserver(function(){
+      // Когда корзина обнулилась — сбрасываем всё
       if((parseInt(badge.textContent) || 0) === 0){
         sessionStorage.removeItem('tvb_shown');
         sessionStorage.removeItem('tvb2_shown');
         sessionStorage.removeItem('tvb3_shown');
+        sessionStorage.removeItem('tvb_nonTentCount');
+        nonTentCount = 0;
         v1o.v=false; v2o.v=false; v3o.v=false;
       }
     });
@@ -135,6 +175,8 @@
         sessionStorage.removeItem('tvb_shown');
         sessionStorage.removeItem('tvb2_shown');
         sessionStorage.removeItem('tvb3_shown');
+        sessionStorage.removeItem('tvb_nonTentCount');
+        nonTentCount = 0;
       }
     } else {
       var obs = new MutationObserver(function(){
