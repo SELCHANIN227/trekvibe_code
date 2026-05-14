@@ -88,7 +88,7 @@
 
     var note = document.createElement('div');
     note.id = 'cart-tent-note';
-    note.textContent = '* Автопалатки не участвуют в акции бесплатной доставки. Стоимость доставки автопалатки будет рассчитана после оформления заявки. На остальные товары акция действует.';
+    note.textContent = '* Автопалатки не участвуют в акции бесплатной доставки. Стоимость доставки автопалатки будет рассчитана после оформления заявки.';
 
     var amountBlock = document.querySelector('.t706__cartwin-amount');
     if (amountBlock) {
